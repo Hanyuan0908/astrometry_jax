@@ -16,12 +16,14 @@ to luminous stars from Gaia astrometry plus radial velocities. Two data regimes 
 
 Design rule: every likelihood is jit/vmap/grad-able with static shapes and no Python control flow
 on traced values. **Precision is global**: `DARKCOMP_PRECISION=32|64` (default 64) is read once in
-`darkcomp/__init__.py` before JAX is touched; never cast dtypes inside functions. Both precisions
+`darkcomp/__init__.py` before JAX is touched; never cast dtypes inside functions. TF32 tensor-core matmuls are
+disabled there (`jax_default_matmul_precision=highest`): the normal equations need true float32. Both precisions
 give the same detections and parameters agreeing to ~1e-5 relative; tests run under both
 (`DARKCOMP_PRECISION=32 $PY -m pytest -q`), with tolerances keyed on `tests.conftest.F32`. **The dev machine has no usable GPU and limited RAM**: never `vmap` more than a
 few hundred (n_obs, 9) design matrices at once (a 480k-point vmap once froze the machine); grid
 searches go through chunked `lax.map` (`epoch.profile_loglike_batch`, `batch.batch_period_search`).
-Benchmarks on a GPU run in Google Colab via `notebooks/gpu_benchmark_colab.ipynb`. GitHub:
+Benchmarks on a GPU run in Google Colab via `notebooks/gpu_benchmark_colab.ipynb` (executed runs are archived
+under `notebooks/runs/`; L4, float32: 44 sources/s at N=4096 with 350 sources x 256 trials per step, 26x the Colab CPU). GitHub:
 `git@github.com:Hanyuan0908/astrometry_jax.git` (private).
 
 ## Environment and commands

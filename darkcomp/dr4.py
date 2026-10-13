@@ -42,18 +42,20 @@ def read_votable(path):
             warnings.simplefilter("ignore")
             tab = parse(path).get_first_table().to_table()
     rows = []
-    for r in tab:
-        n = len(np.atleast_1d(r["obs_time_tcb"]))
-        rec = dict(source_id=int(r["source_id"]), transit_id=int(r["transit_id"]), ra0=float(r["ra0"]),
-                   dec0=float(r["dec0"]), bary_corr_ns=float(r["obs_time_bary_corr"]),
-                   plx_factor=float(r["parallax_factor_al"]), multipeak=bool(r["multipeak"]),
-                   excess_noise=float(r["agis_source_excess_noise"]), g_mag=float(r["g_mag"]))
-        for i in range(n):
-            rows.append(dict(rec, ccd=i, t_ns=int(np.atleast_1d(r["obs_time_tcb"])[i]),
-                             psi_deg=float(np.atleast_1d(r["scan_pos_angle"])[i]),
-                             w=float(np.atleast_1d(r["centroid_pos_al"])[i]),
-                             err=float(np.atleast_1d(r["centroid_pos_error_al"])[i]),
-                             used_al=bool(np.atleast_1d(r["used_by_agis_al"])[i])))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # astropy: masked (unused CCD) elements -> nan; dropped later
+        for r in tab:
+            n = len(np.atleast_1d(r["obs_time_tcb"]))
+            rec = dict(source_id=int(r["source_id"]), transit_id=int(r["transit_id"]), ra0=float(r["ra0"]),
+                       dec0=float(r["dec0"]), bary_corr_ns=float(r["obs_time_bary_corr"]),
+                       plx_factor=float(r["parallax_factor_al"]), multipeak=bool(r["multipeak"]),
+                       excess_noise=float(r["agis_source_excess_noise"]), g_mag=float(r["g_mag"]))
+            for i in range(n):
+                rows.append(dict(rec, ccd=i, t_ns=int(np.atleast_1d(r["obs_time_tcb"])[i]),
+                                 psi_deg=float(np.atleast_1d(r["scan_pos_angle"])[i]),
+                                 w=float(np.atleast_1d(r["centroid_pos_al"])[i]),
+                                 err=float(np.atleast_1d(r["centroid_pos_error_al"])[i]),
+                                 used_al=bool(np.atleast_1d(r["used_by_agis_al"])[i])))
     df = pd.DataFrame(rows)
     df["jd_tcb"] = TCB_2010_JD + (df["t_ns"] + df["bary_corr_ns"]) / NS_PER_DAY
     return df

@@ -5,7 +5,8 @@ epoch-astrometry (DR4) search.
 
 Precision is chosen once, at import, from the environment variable DARKCOMP_PRECISION
 ("64", the default, or "32"); the whole pipeline then runs in that dtype. It must be set
-before `import darkcomp` (JAX reads the x64 flag on first use).
+before `import darkcomp` (JAX reads the x64 flag on first use). float32 means genuine float32:
+TF32 tensor-core matmuls are disabled.
 """
 import os
 import jax
@@ -14,6 +15,9 @@ PRECISION = int(os.environ.get("DARKCOMP_PRECISION", "64"))
 if PRECISION not in (32, 64):
     raise ValueError("DARKCOMP_PRECISION must be 32 or 64")
 jax.config.update("jax_enable_x64", PRECISION == 64)
+# On tensor-core GPUs XLA lowers float32 matmuls to TF32 (10-bit mantissa) by default; the normal
+# equations in epoch.weighted_lstsq need true float32, so force full precision everywhere.
+jax.config.update("jax_default_matmul_precision", "highest")
 
 from . import constants, kepler, orbit, gaia, data, likelihood, sampler, fit  # noqa: E402,F401
 
