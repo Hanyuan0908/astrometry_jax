@@ -186,6 +186,23 @@ than a few hundred trial orbits at once.
 **Throughput.** On an A100 the pipeline runs at about 124 sources/s for batches of 1000 or more; on an
 L4 44 sources/s; on a laptop CPU 4 to 6 sources/s. Results are identical across devices and chunkings.
 
+## 6b. Detectability versus companion mass and distance
+
+`mock.physical_population` builds mock systems from physical parameters (primary mass, dark-companion mass,
+period, distance); a0 then follows from Kepler's law and the parallax. `scripts/detectability.py` runs a
+grid of (M2, distance) cells through the batch pipeline on the real pre-release scan patterns:
+
+```bash
+DARKCOMP_PRECISION=32 python scripts/detectability.py --m2 0.1 0.3 0.6 1 1.4 3 10 --dist 500 1000 2000 5000 10000 --n 20
+DARKCOMP_PRECISION=32 python scripts/detectability.py ... --noise-scale 5      # 5x the per-CCD errors, ~G 16-17 instead of G 6-13
+```
+
+It prints the detection fraction per cell (and the fraction with the period recovered to 5%), the median
+recovered M2, and writes `<out>.npz` and `<out>.png`. 700 sources take about 2.5 minutes on a laptop CPU
+and a few seconds on a GPU. Results for the two cases above are in `docs/figures/detectability_bright.*`
+and `docs/figures/detectability_noise5.*`. Options: `--m-star`, `--p-range`, `--e-max`, `--sig`
+(detection threshold), `--all-templates` (include the G~19-20 scan patterns with mas-level errors).
+
 ## 7. Posterior for a candidate (NUTS)
 
 After the batch search, sample the full 14-parameter posterior of an interesting source, with or

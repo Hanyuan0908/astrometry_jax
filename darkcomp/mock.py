@@ -24,6 +24,29 @@ def random_population(rng, n, p_range=(30.0, 2500.0), a0_range=(0.05, 5.0), plx_
     )
 
 
+def physical_population(rng, n, m_star=1.0, m_2=1.4, period=None, dist_pc=500.0, p_range=(30.0, 2500.0),
+                        e_max=0.8, eps=0.0):
+    """Truth dict like `random_population`, but a0 follows from the physics of a dark companion.
+
+    m_star, m_2 [Msun], dist_pc and period [d] may be scalars or length-n arrays; period=None draws
+    log-uniform in p_range. parallax = 1000/dist_pc; a0 = a(P, M*+M2) * parallax * (q/(1+q) - eps/(1+eps))
+    with q = M2/M* and eps the companion/primary flux ratio (0 for a dark companion). Orientation isotropic.
+    """
+    b = lambda x: np.broadcast_to(np.asarray(x, float), (n,)).copy()  # noqa: E731
+    m_star, m_2, dist = b(m_star), b(m_2), b(dist_pc)
+    P = b(period) if period is not None else np.exp(rng.uniform(np.log(p_range[0]), np.log(p_range[1]), n))
+    plx = 1000.0 / dist
+    a_au = np.asarray(orbit.semimajor_axis_au(P, m_star, m_2))
+    a0 = np.asarray(orbit.photocentre_a0_mas(a_au, plx, m_2 / m_star, eps))
+    return dict(
+        period=P, ecc=rng.uniform(0.0, e_max, n), a0_mas=a0,
+        inc=np.arccos(rng.uniform(-1, 1, n)), Omega=rng.uniform(0, 2 * np.pi, n), omega=rng.uniform(0, 2 * np.pi, n),
+        t_peri=rng.uniform(-1000, 1000, n), parallax=plx,
+        pmra=rng.normal(0, 20, n), pmdec=rng.normal(0, 20, n), d_ra_mas=rng.normal(0, 0.5, n), d_dec_mas=rng.normal(0, 0.5, n),
+        m_star=m_star, m_2=m_2, dist_pc=dist,
+    )
+
+
 def simulate(rng, templates, truth, noise_scale=1.0):
     """List of EpochAstrometry: source i uses templates[i % len(templates)]'s scan pattern."""
     out = []

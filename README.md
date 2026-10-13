@@ -85,6 +85,14 @@ pre-release sources, P log-uniform in 30 to 2500 d, a0 in 0.05 to 5 mas, e up to
 P longer than the data span (aliases) or a0 below 0.12 mas. CPU float32, CPU float64, L4 and A100 all give
 exactly these numbers.
 
+**Detectability versus companion mass and distance** (`scripts/detectability.py`, solar-mass primary, dark
+companion, P in 30 to 1500 d, 20 systems per cell, detection = 5 sigma). With the per-CCD errors of the
+bright pre-release stars (0.08 to 0.16 mas) a 1.4 Msun neutron star is detected in 100% of systems out to
+2 kpc, 80% at 5 kpc and 85% at 10 kpc; a 0.3 Msun white dwarf in 100% at 500 pc, 80% at 2 kpc, 35% at
+10 kpc. With 5 times larger errors (roughly G 16 to 17) a 1.4 Msun companion is found in 95% at 1 kpc,
+80% at 2 kpc and 30% at 5 kpc. The recovered median M2 is within 2% of truth out to 2 kpc and within
+10% at 10 kpc. Figures: `docs/figures/detectability_bright.png`, `docs/figures/detectability_noise5.png`.
+
 **Precision**: float32 versus float64 on 128 mock sources: identical detection set, 122 of 126 periods agree
 to better than 0.1% (the rest to 0.35%, all with P longer than the data span), a0 differences of order
 1e-5 mas, chi2 relative difference 1e-6. The DR3 MAP agrees to five digits.
@@ -116,7 +124,7 @@ Single-candidate NUTS (BH3, astrometry + RVs, 800 warm-up + 1000 samples): 67 s 
 
 ```
 darkcomp/         the package (see CLAUDE.md for a module-by-module description)
-scripts/          fit_source.py (DR3 paper fit), precision_check.py
+scripts/          fit_source.py (DR3 paper fit), detectability.py (mass-distance grid), precision_check.py
 notebooks/        gpu_benchmark_colab.ipynb and archived executed runs in notebooks/runs/
 tests/            pytest suite (20 tests)
 data/             El-Badry et al. 2024 RVs and SED masses, cached DR3 rows, Gaia BH3 epoch data (CDS),

@@ -62,3 +62,13 @@ def test_batch_pipeline_recovers_mock_orbits(prerelease):
     assert np.mean(np.abs(P / truth["period"] - 1) < 0.05) >= 0.75
     assert np.all(np.abs(np.asarray(r["parallax"]) - truth["parallax"]) < 0.1)
 
+
+
+def test_physical_population_a0_is_consistent():
+    from darkcomp import fit
+    rng = np.random.default_rng(1)
+    t = mock.physical_population(rng, 5, m_star=0.9, m_2=np.array([0.3, 1.0, 1.4, 3.0, 10.0]), dist_pc=np.array([100, 300, 1000, 2000, 5000]))
+    assert np.allclose(t["parallax"], 1000.0 / np.array([100, 300, 1000, 2000, 5000]))
+    for i in range(5):
+        m2 = fit.m2_from_a0(float(t["a0_mas"][i]), float(t["parallax"][i]), float(t["period"][i]), 0.9)
+        assert abs(m2 / t["m_2"][i] - 1) < 1e-4
