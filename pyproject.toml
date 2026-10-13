@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "darkcomp"
+version = "0.1.0"
+description = "GPU-friendly joint fitting of Gaia astrometric orbits and radial velocities for stars with dark companions (JAX)."
+requires-python = ">=3.10"
+dependencies = [
+    "jax>=0.4.30",
+    "numpy",
+    "scipy",
+    "pandas",
+    "astroquery",
+]
+
+[project.optional-dependencies]
+nuts = ["numpyro"]
+dev = ["pytest", "matplotlib", "corner"]
+
+[tool.setuptools.packages.find]
+include = ["darkcomp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
