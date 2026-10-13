@@ -137,7 +137,7 @@ def profile_loglike_batch(P, E, PH, d, jitter=0.0, chunk=256):
     return out.reshape(-1)[:n]
 
 
-def period_search(d, periods, n_ecc=6, n_phase=8, jitter=0.0, e_max=0.9, chunk=256, max_points=200_000):
+def period_search(d, periods, n_ecc=4, n_phase=8, jitter=0.0, e_max=0.6, chunk=256, max_points=200_000):
     """Profile-likelihood periodogram: for each trial period, best -chi2/2 over an (e, phase) grid.
 
     Memory-safe: the len(periods)*n_ecc*n_phase grid is evaluated `chunk` points at a time.
@@ -157,21 +157,44 @@ def period_search(d, periods, n_ecc=6, n_phase=8, jitter=0.0, e_max=0.9, chunk=2
     return flat[idx, k], E.reshape(len(periods), -1)[idx, k], PH.reshape(len(periods), -1)[idx, k]
 
 
-def refine_profile(d, period, ecc, phase, jitter=0.0):
-    """Polish (P, e, phase) with L-BFGS on the profile likelihood; return Campbell elements and linear params."""
+def profile_logdet_loglike(period, ecc, phase, log_jitter, d):
+    """Profile log-likelihood including the Gaussian normalisation, so a jitter term can be fitted."""
+    jit = jnp.exp(log_jitter)
+    var = d["err"] ** 2 + jit**2
+    _, chi2, _ = weighted_lstsq(orbital_design(d, period, ecc, phase), d, jit)
+    return -0.5 * (chi2 + jnp.sum(d["mask"] * jnp.log(var)))
+
+
+def refine_profile(d, period, ecc, phase, jitter=0.0, fit_jitter=False):
+    """Polish (P, e, phase[, jitter]) with L-BFGS on the profile likelihood.
+
+    With fit_jitter=True an extra white-noise term (added in quadrature to every error, as
+    Gaia's astrometric_excess_noise) is fitted jointly; use it for bright stars whose per-CCD
+    errors are underestimated. Returns Campbell elements, linear parameters and their covariance.
+    """
     from scipy.optimize import minimize
-    f = jax.jit(lambda x: -profile_loglike(x[0], x[1], x[2], d, jitter))
-    g = jax.jit(jax.grad(lambda x: -profile_loglike(x[0], x[1], x[2], d, jitter)))
-    x0 = np.array([period, ecc, phase], float)
+    if fit_jitter:
+        f = jax.jit(lambda x: -profile_logdet_loglike(x[0], x[1], x[2], x[3], d))
+        x0 = np.array([period, ecc, phase, np.log(max(jitter, 1e-3))], float)
+        bounds = [(1.0, None), (0.0, 0.99), (None, None), (np.log(1e-4), np.log(100.0))]
+    else:
+        f = jax.jit(lambda x: -profile_loglike(x[0], x[1], x[2], d, jitter))
+        x0 = np.array([period, ecc, phase], float)
+        bounds = [(1.0, None), (0.0, 0.99), (None, None)]
+    g = jax.jit(jax.grad(f))
     res = minimize(lambda x: float(f(jnp.asarray(x))), x0, jac=lambda x: np.asarray(g(jnp.asarray(x))),
-                   method="L-BFGS-B", bounds=[(1.0, None), (0.0, 0.99), (None, None)])
-    P, e, ph = res.x
-    beta, chi2, cov = weighted_lstsq(orbital_design(d, P, e, ph), d, jitter)
+                   method="L-BFGS-B", bounds=bounds)
+    P, e, ph = res.x[:3]
+    jit = float(np.exp(res.x[3])) if fit_jitter else jitter
+    beta, chi2, cov = weighted_lstsq(orbital_design(d, P, e, ph), d, jit)
     beta = np.asarray(beta); lin = dict(zip(LINEAR_NAMES, beta))
     a0, omega, Omega, inc = orbit.campbell_from_thiele_innes(lin["A"], lin["B"], lin["F"], lin["G"])
     t_peri = ph / (2 * np.pi) * P   # M = 2 pi (t - t_peri)/P  with phase = 2 pi t_peri / P
+    ti = np.array([lin[k] for k in ("B", "G", "A", "F")]); cti = np.asarray(cov)[5:, 5:]
+    significance = float(np.sqrt(ti @ np.linalg.solve(cti, ti)))
     return dict(period=P, ecc=e, phase=ph, t_peri=t_peri, a0_mas=a0, omega=omega, Omega=Omega, inc=inc,
-                chi2=float(chi2), linear=lin, linear_cov=np.asarray(cov), n=d["mask"].sum().item())
+                chi2=float(chi2), jitter=jit, significance=significance, linear=lin,
+                linear_cov=np.asarray(cov), n=int(d["mask"].sum()))
 
 
 # ----------------------------------------------------------------------------- physical-parameter likelihood
