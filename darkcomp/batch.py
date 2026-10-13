@@ -39,21 +39,42 @@ def _take(dd, i):
 batch_single_star = jax.jit(jax.vmap(lambda d: E.fit_single_star(d)[:2]))
 
 
-def batch_period_search(dd, periods, n_ecc=4, n_phase=8, chunk=256, e_max=0.6):
+def plan_chunks(n_obs, n_sources, mem_budget_gb=1.0, dtype_bytes=8, grid_points=None, overhead=4.0):
+    """Choose (source_chunk, chunk) so that one search step holds about `mem_budget_gb` of working memory.
+
+    Working set per (source, trial-orbit) pair ~ overhead * n_obs * 9 * dtype_bytes (design matrix
+    plus XLA temporaries). Returns the number of sources vmapped together and the number of trial
+    orbits per source per step. CPU default 1 GB; A100-40GB ~25 GB; T4/L4 ~8 GB.
+    """
+    per_pair = overhead * n_obs * 9 * dtype_bytes
+    pairs = max(int(mem_budget_gb * 1e9 / per_pair), 1)
+    chunk = min(256 if grid_points is None else grid_points, pairs)
+    source_chunk = max(min(pairs // chunk, n_sources), 1)
+    return source_chunk, chunk
+
+
+def batch_period_search(dd, periods, n_ecc=4, n_phase=8, chunk=256, e_max=0.6, source_chunk=1):
     """Per-source profile periodogram. Returns (loglike (S, nP), best_e (S, nP), best_phase (S, nP)).
 
-    Outer `lax.map` over sources, inner chunked grid (no per-pair gathers); at most `chunk`
-    (n_obs, 9) design matrices exist at a time.
+    Parallelism: `source_chunk` sources are vmapped together, and within each the grid is evaluated
+    `chunk` trial orbits at a time, so each step is a batch of source_chunk*chunk independent
+    weighted least-squares problems (what a GPU needs). Memory ~ source_chunk*chunk*n_obs*9*bytes*4.
+    Outer loop over source groups is a sequential `lax.map`. Use `plan_chunks` to size both.
     """
     periods = jnp.asarray(periods)
     eg = jnp.linspace(0.0, e_max, n_ecc); pg = jnp.linspace(0.0, 2 * jnp.pi, n_phase, endpoint=False)
     P, Ee, PH = jnp.meshgrid(periods, eg, pg, indexing="ij")
     P, Ee, PH = P.ravel(), Ee.ravel(), PH.ravel()
+    S = dd["w"].shape[0]
+    n_pad = (-S) % source_chunk
+    padf = lambda x: jnp.concatenate([x, jnp.repeat(x[:1], n_pad, axis=0)], axis=0)  # noqa: E731
+    ddg = jax.tree_util.tree_map(lambda x: padf(x).reshape((-1, source_chunk) + x.shape[1:]), dd)
 
     def one_source(d):
         return E.profile_loglike_batch(P, Ee, PH, d, 0.0, chunk).reshape(len(periods), n_ecc * n_phase)
 
-    ll = jax.lax.map(one_source, dd)
+    ll = jax.lax.map(jax.vmap(one_source), ddg)
+    ll = ll.reshape((-1,) + ll.shape[2:])[:S]
     k = jnp.argmax(ll, axis=-1)
     best = jnp.take_along_axis(ll, k[..., None], -1)[..., 0]
     Eg = Ee.reshape(len(periods), -1); PHg = PH.reshape(len(periods), -1)
@@ -111,17 +132,18 @@ def top_peaks(ll, n_top):
 
 
 def run_pipeline(dd, periods, n_ecc=4, n_phase=8, chunk=256, m_star=1.0, maxiter=30, refine_chunk=64, n_top=3,
-                 e_max=0.6):
+                 e_max=0.6, source_chunk=1):
     """Whole search for a stacked batch. Returns a dict of per-source arrays (all jnp).
 
     The `n_top` highest periodogram peaks of every source are refined and the one with the
     lowest chi2 is kept, which guards against aliases and spurious high-e grid solutions.
-    Precision is global (DARKCOMP_PRECISION at import), not a per-call option.
+    Precision is global (DARKCOMP_PRECISION at import), not a per-call option. Size `source_chunk`,
+    `chunk` and `refine_chunk` from the device memory with `plan_chunks`.
     """
     periods = jnp.asarray(periods)
     S = dd["w"].shape[0]
     beta5, chi2_5 = batch_single_star(dd)
-    ll, be, bp = batch_period_search(dd, periods, n_ecc, n_phase, chunk, e_max)
+    ll, be, bp = batch_period_search(dd, periods, n_ecc, n_phase, chunk, e_max, source_chunk)
     ks = top_peaks(ll, n_top)                      # (S, n_top)
     idx = jnp.arange(S)[:, None]
     rep = jax.tree_util.tree_map(lambda x: jnp.repeat(x, n_top, axis=0), dd)
