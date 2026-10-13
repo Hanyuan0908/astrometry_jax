@@ -15,7 +15,10 @@ to luminous stars from Gaia astrometry plus radial velocities. Two data regimes 
    measurement; `batch.py` is the many-source, GPU-shaped search.
 
 Design rule: every likelihood is jit/vmap/grad-able with static shapes and no Python control flow
-on traced values. **The dev machine has no usable GPU and limited RAM**: never `vmap` more than a
+on traced values. **Precision is global**: `DARKCOMP_PRECISION=32|64` (default 64) is read once in
+`darkcomp/__init__.py` before JAX is touched; never cast dtypes inside functions. Both precisions
+give the same detections and parameters agreeing to ~1e-5 relative; tests run under both
+(`DARKCOMP_PRECISION=32 $PY -m pytest -q`), with tolerances keyed on `tests.conftest.F32`. **The dev machine has no usable GPU and limited RAM**: never `vmap` more than a
 few hundred (n_obs, 9) design matrices at once (a 480k-point vmap once froze the machine); grid
 searches go through chunked `lax.map` (`epoch.profile_loglike_batch`, `batch.batch_period_search`).
 Benchmarks on a GPU run in Google Colab via `notebooks/gpu_benchmark_colab.ipynb`. GitHub:
@@ -42,16 +45,23 @@ Network access (astroquery to the Gaia archive) is only needed for sources not i
 ### Epoch astrometry (DR4 path)
 - `darkcomp/epoch.py` — abscissa model `w = (dra + pmra t + BX + GY) sin psi + (ddec + pmdec t + AX + FY) cos psi + plx f`.
   At fixed (P, e, phase) it is linear in 9 parameters, so `profile_loglike` is one weighted
-  least-squares solve; `period_search` evaluates a (P, e, phase) grid in memory-safe chunks and
-  `refine_profile` polishes with L-BFGS on the JAX gradient (optionally fitting a jitter term, needed
-  for bright stars like HD 114762). `predict_abscissa`/`log_prob` give the full 14-parameter
+  least-squares solve (`weighted_lstsq`: column-scaled normal equations + Cholesky; as accurate as
+  QR here and 1.5x faster). `period_search` evaluates a (P, e, phase) grid in memory-safe chunks and
+  `refine_profile` polishes with `lm_refine`, a fixed-iteration Levenberg-Marquardt over
+  (log P, e, phase) using a forward-mode Jacobian (optionally iterating a jitter/excess-noise term,
+  needed for bright stars like HD 114762). Do not go back to line-search quasi-Newton over an
+  unscaled period in days: that stalled in float32 and looked like a precision bug. `predict_abscissa`/`log_prob` give the full 14-parameter
   likelihood for joint fits with RVs. Reference epoch J2017.5 (`DR4_REF_JD`); `build_data` re-references RV times.
 - `darkcomp/dr4.py` — parser for the DR4 `epoch_astrometry` VOTable (per-CCD arrays exploded;
   keep `used_by_agis_al` and not `multipeak`, as ESA's gaia-supdate does). Time = ns since 2010.0 TCB + bary corr.
 - `darkcomp/batch.py` — stacked/padded multi-source pipeline: vmapped single-star fit, `lax.map`
-  over sources of the chunked periodogram, bounded `jaxopt.LBFGSB` refinement of the top-3 peaks,
-  Campbell elements, significance and companion mass. Grid e <= 0.6 by design: high-e grid points
+  over sources of the chunked periodogram, vmapped LM refinement of the top-3 peaks, Campbell
+  elements, significance and companion mass. This is the candidate filter; NUTS (`nuts.py`) is for
+  follow-up of individual candidates only. Grid e <= 0.6 by design: high-e grid points
   overfit noise (spurious e -> 1 solutions).
+- `darkcomp/lm.py` — fixed-iteration Levenberg-Marquardt (jit/vmap-safe, precision-agnostic). Used by
+  `epoch.lm_refine` and by `fit.optimise` (DR3 MAP on `likelihood.residuals` in the unconstrained
+  parameterisation). scipy L-BFGS-B stalls in float32 on these curved ridges; do not reintroduce it.
 - `darkcomp/nuts.py` — numpyro NUTS on a reparameterised vector (log P, sqrt(e) cos/sin omega, cos i, ...)
   with the Jacobian added so priors stay flat in physical parameters; dense mass matrix; start at the MAP.
 - `darkcomp/mock.py` — mock sources reusing real scan patterns (not a gaiamock replacement).

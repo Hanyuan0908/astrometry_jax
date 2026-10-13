@@ -3,6 +3,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from darkcomp import likelihood as L, fit
+from tests.conftest import F32
 
 
 def paper_theta(paper):

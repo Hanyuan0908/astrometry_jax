@@ -2,6 +2,9 @@ import numpy as np
 import jax.numpy as jnp
 from darkcomp import orbit
 from darkcomp.gaia import corr_matrix_from_vec
+from tests.conftest import F32
+
+TOL = 1e-5 if F32 else 1e-9
 
 
 def test_thiele_innes_roundtrip():
@@ -11,8 +14,8 @@ def test_thiele_innes_roundtrip():
         A, B, F, G = (float(x) for x in orbit.thiele_innes_ABFG(a0, w, W, i))
         a0r, wr, Wr, ir = orbit.campbell_from_thiele_innes(A, B, F, G)
         A2, B2, F2, G2 = (float(x) for x in orbit.thiele_innes_ABFG(a0r, wr, Wr, ir))
-        assert np.allclose([A, B, F, G], [A2, B2, F2, G2], atol=1e-9)
-        assert abs(a0r - a0) < 1e-9 and abs(ir - i) < 1e-9
+        assert np.allclose([A, B, F, G], [A2, B2, F2, G2], atol=TOL)
+        assert abs(a0r - a0) < TOL and abs(ir - i) < TOL
         assert 0 <= Wr < np.pi
 
 

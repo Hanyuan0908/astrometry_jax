@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import jax
 import jax.numpy as jnp
-from scipy.optimize import brentq, minimize
+from scipy.optimize import brentq
 
 from . import orbit, likelihood as L
 from .sampler import run_ensemble, init_ball
@@ -59,16 +59,21 @@ def _scale_for(solution, theta0):
     return np.maximum(sc, 1e-6)
 
 
-def optimise(theta0, data, maxiter=2000):
-    """Gradient-based MAP from theta0 (L-BFGS on the JAX gradient)."""
-    f = jax.jit(lambda th: -L.log_prob(th, data))
-    g = jax.jit(jax.grad(lambda th: -L.log_prob(th, data)))
+def optimise(theta0, data, n_iter=60):
+    """MAP from theta0 by Levenberg-Marquardt on the whitened residuals (`likelihood.residuals`),
+    in the scaled unconstrained parameterisation of `nuts.to_unconstrained`. Pure JAX, works in
+    float32 and float64 alike (scipy L-BFGS-B stalled in float32 on this curved ridge).
+    """
+    from .nuts import to_physical, to_unconstrained
+    from .lm import levenberg_marquardt
     theta0 = np.asarray(theta0, dtype=float)
-    if not np.isfinite(float(f(jnp.asarray(theta0)))):
+    if not np.isfinite(float(L.log_prob(jnp.asarray(theta0), data))):
         return theta0, -np.inf
-    res = minimize(lambda x: float(f(jnp.asarray(x))), theta0, jac=lambda x: np.asarray(g(jnp.asarray(x))),
-                   method="L-BFGS-B", options={"maxiter": maxiter})
-    return res.x, -float(res.fun)
+    lo = np.full(14, -np.inf); hi = np.full(14, np.inf); lo[3] = -1.0; hi[3] = 1.0   # cos i
+    u, chi2 = levenberg_marquardt(lambda u: L.residuals(to_physical(u), data), jnp.asarray(to_unconstrained(theta0)),
+                                  n_iter, lo, hi)
+    theta = np.asarray(to_physical(u), dtype=float)
+    return theta, float(L.log_prob(jnp.asarray(theta), data))
 
 
 @dataclass

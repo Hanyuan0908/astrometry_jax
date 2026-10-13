@@ -4,6 +4,8 @@ import pytest
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 DATA = os.path.join(ROOT, "data")
+PRECISION = int(os.environ.get("DARKCOMP_PRECISION", "64"))
+F32 = PRECISION == 32
 
 
 @pytest.fixture(scope="session")

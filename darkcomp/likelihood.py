@@ -69,6 +69,9 @@ def build_data(solution, rvdata=None, m_star_prior=(1.0, 0.1), use_rvs=True, bou
     """
     cov = np.asarray(solution.cov)
     cov_inv = np.linalg.inv(cov)
+    # whitening matrix W = L^{-1} with cov = L L^T, so chi2 = |W r|^2: a sum of squares, which stays
+    # accurate in float32 where the quadratic form r^T cov^{-1} r can cancel catastrophically
+    whiten = np.linalg.inv(np.linalg.cholesky(cov))
     lo, hi = default_bounds()
     if bounds:
         for k, (a, b) in bounds.items():
@@ -80,6 +83,7 @@ def build_data(solution, rvdata=None, m_star_prior=(1.0, 0.1), use_rvs=True, bou
     return dict(
         gaia_mean=jnp.asarray(solution.mean),
         gaia_cov_inv=jnp.asarray(cov_inv),
+        gaia_whiten=jnp.asarray(whiten),
         rv=rvdata.as_jax(),
         rv_weight=jnp.asarray(1.0 if use_rvs else 0.0),
         m_star_mu=jnp.asarray(float(m_star_prior[0])),
@@ -105,7 +109,8 @@ def is_sb1(data):
 
 def log_like_gaia(theta, data):
     r = gaia_vector(theta, is_sb1(data)) - data["gaia_mean"]
-    return -0.5 * r @ data["gaia_cov_inv"] @ r
+    z = data["gaia_whiten"] @ r
+    return -0.5 * jnp.sum(z**2)
 
 
 def log_like_rv(theta, data):
@@ -123,6 +128,15 @@ def log_prior(theta, data):
     m_star = theta[2]
     lp = -0.5 * ((m_star - data["m_star_mu"]) / data["m_star_sigma"]) ** 2
     return jnp.where(inside, lp, -jnp.inf)
+
+
+def residuals(theta, data):
+    """Whitened residual vector r with log_prob = -|r|^2/2 inside the prior box (Gaia, RVs, m_star prior)."""
+    z = data["gaia_whiten"] @ (gaia_vector(theta, is_sb1(data)) - data["gaia_mean"])
+    rv = data["rv"]
+    r_rv = jnp.sqrt(data["rv_weight"] * rv["mask"]) * (predict_rv(theta, rv["t"]) - rv["rv"]) / rv["err"]
+    r_prior = (theta[2] - data["m_star_mu"]) / data["m_star_sigma"]
+    return jnp.concatenate([z, r_rv, r_prior[None]])
 
 
 def log_prob(theta, data):
