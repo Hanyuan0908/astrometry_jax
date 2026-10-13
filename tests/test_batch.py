@@ -52,9 +52,10 @@ def test_batch_pipeline_recovers_mock_orbits(prerelease):
     eps, _ = prerelease
     rng = np.random.default_rng(1)
     truth = mock.random_population(rng, 8, p_range=(50, 800), a0_range=(0.5, 3.0))
-    # stellar templates only: the G~20 quasars have several-mas per-CCD errors, so mas-level orbits are undetectable there
-    stars = [e for sid, e in eps.items() if dr4.PRERELEASE_SOURCES[sid][1] != "qso"]
-    dd = batch.stack_epochs(mock.simulate(rng, stars, truth))
+    # precise templates only (median per-CCD error < 0.5 mas): the G~19-20 sources have mas-level errors
+    good = [e for e in eps.values() if np.median(e.err[e.mask > 0]) < 0.5]
+    assert len(good) >= 6
+    dd = batch.stack_epochs(mock.simulate(rng, good, truth))
     r = batch.run_pipeline(dd, np.geomspace(20, 2000, 200), chunk=128)
     P = np.asarray(r["period"]); sig = np.asarray(r["significance"])
     assert np.all(sig > 5)
