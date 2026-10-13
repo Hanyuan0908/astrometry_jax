@@ -35,6 +35,11 @@ def _take(dd, i):
     return jax.tree_util.tree_map(lambda x: x[i], dd)
 
 
+def as_dtype(dd, dtype):
+    """Cast a stacked batch (or single-source pytree) to float32/float64."""
+    return jax.tree_util.tree_map(lambda x: jnp.asarray(x, dtype), dd)
+
+
 # ----------------------------------------------------------------------------- stages
 
 batch_single_star = jax.jit(jax.vmap(lambda d: E.fit_single_star(d)[:2]))
@@ -46,8 +51,9 @@ def batch_period_search(dd, periods, n_ecc=4, n_phase=8, chunk=256, e_max=0.6):
     Outer `lax.map` over sources, inner chunked grid (no per-pair gathers); at most `chunk`
     (n_obs, 9) design matrices exist at a time.
     """
-    periods = jnp.asarray(periods)
-    eg = jnp.linspace(0.0, e_max, n_ecc); pg = jnp.linspace(0.0, 2 * jnp.pi, n_phase, endpoint=False)
+    dt = dd["w"].dtype   # float32 batches stay float32 end to end
+    periods = jnp.asarray(periods, dt)
+    eg = jnp.linspace(0.0, e_max, n_ecc, dtype=dt); pg = jnp.linspace(0.0, 2 * jnp.pi, n_phase, endpoint=False, dtype=dt)
     P, Ee, PH = jnp.meshgrid(periods, eg, pg, indexing="ij")
     P, Ee, PH = P.ravel(), Ee.ravel(), PH.ravel()
 
@@ -64,12 +70,13 @@ def batch_period_search(dd, periods, n_ecc=4, n_phase=8, chunk=256, e_max=0.6):
 
 def _refine_one(d, x0, maxiter, p_bounds):
     """Bounded L-BFGS over (log P, e, phase) on the profile likelihood."""
-    lo = jnp.array([jnp.log(p_bounds[0]), 0.0, -10.0]); hi = jnp.array([jnp.log(p_bounds[1]), 0.95, 10.0 + 2 * jnp.pi])
+    dt = d["w"].dtype
+    lo = jnp.array([jnp.log(p_bounds[0]), 0.0, -10.0], dt); hi = jnp.array([jnp.log(p_bounds[1]), 0.95, 10.0 + 2 * jnp.pi], dt)
 
     def loss(x):
         return -E.profile_loglike(jnp.exp(x[0]), x[1], x[2], d, 0.0)
-    solver = jaxopt.LBFGSB(fun=loss, maxiter=maxiter, tol=1e-9)
-    x, state = solver.run(jnp.array([jnp.log(x0[0]), x0[1], x0[2]]), bounds=(lo, hi))
+    solver = jaxopt.LBFGSB(fun=loss, maxiter=maxiter, tol=1e-6 if dt == jnp.float32 else 1e-9)
+    x, state = solver.run(jnp.array([jnp.log(x0[0]), x0[1], x0[2]], dt), bounds=(lo, hi))
     Pb, e, ph = jnp.exp(x[0]), x[1], x[2]
     beta, chi2, cov = E.weighted_lstsq(E.orbital_design(d, Pb, e, ph), d)
     A, B, F, G = beta[7], beta[5], beta[8], beta[6]
@@ -83,7 +90,8 @@ def _refine_one(d, x0, maxiter, p_bounds):
 
 def batch_refine(dd, period0, ecc0, phase0, maxiter=100, p_bounds=(1.0, 1e5), chunk=64):
     """Vmapped bounded refinement, `chunk` sources at a time (each holds a few design matrices)."""
-    x0 = jnp.stack([jnp.asarray(period0), jnp.asarray(ecc0), jnp.asarray(phase0)], axis=-1)
+    dt = dd["w"].dtype
+    x0 = jnp.stack([jnp.asarray(period0, dt), jnp.asarray(ecc0, dt), jnp.asarray(phase0, dt)], axis=-1)
     S = x0.shape[0]; n_pad = (-S) % chunk
     padf = lambda x: jnp.concatenate([x, jnp.repeat(x[:1], n_pad, axis=0)], axis=0)  # noqa: E731
     ddp = jax.tree_util.tree_map(padf, dd); x0p = padf(x0)
@@ -116,16 +124,25 @@ def top_peaks(ll, n_top):
 
 
 def run_pipeline(dd, periods, n_ecc=4, n_phase=8, chunk=256, m_star=1.0, maxiter=40, refine_chunk=64, n_top=3,
-                 e_max=0.6):
+                 e_max=0.6, search_dtype=None):
     """Whole search for a stacked batch. Returns a dict of per-source arrays (all jnp).
 
     The `n_top` highest periodogram peaks of every source are refined and the one with the
     lowest chi2 is kept, which guards against aliases and spurious high-e grid solutions.
+
+    search_dtype: run the (expensive) periodogram in this dtype, e.g. jnp.float32 on a GPU with
+    slow float64, while the single-star fit and the refinement stay in dd's dtype. float32 is
+    accurate enough for *ranking* trial orbits (log-likelihood errors ~1 vs peak heights of
+    10^3) but not for the refinement, whose L-BFGS line search loses precision.
     """
-    periods = jnp.asarray(periods)
+    periods = jnp.asarray(periods, dd["w"].dtype)
     S = dd["w"].shape[0]
     beta5, chi2_5 = batch_single_star(dd)
-    ll, be, bp = batch_period_search(dd, periods, n_ecc, n_phase, chunk, e_max)
+    if search_dtype is not None and search_dtype != dd["w"].dtype:
+        ll, be, bp = batch_period_search(as_dtype(dd, search_dtype), periods, n_ecc, n_phase, chunk, e_max)
+        ll, be, bp = (jnp.asarray(x, dd["w"].dtype) for x in (ll, be, bp))
+    else:
+        ll, be, bp = batch_period_search(dd, periods, n_ecc, n_phase, chunk, e_max)
     ks = top_peaks(ll, n_top)                      # (S, n_top)
     idx = jnp.arange(S)[:, None]
     rep = jax.tree_util.tree_map(lambda x: jnp.repeat(x, n_top, axis=0), dd)

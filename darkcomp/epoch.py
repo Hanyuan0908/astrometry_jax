@@ -143,12 +143,13 @@ def period_search(d, periods, n_ecc=4, n_phase=8, jitter=0.0, e_max=0.6, chunk=2
     Memory-safe: the len(periods)*n_ecc*n_phase grid is evaluated `chunk` points at a time.
     Returns (best_loglike_per_period, best_e, best_phase).
     """
-    periods = jnp.asarray(periods)
+    dt = d["w"].dtype
+    periods = jnp.asarray(periods, dt)
     n_grid = len(periods) * n_ecc * n_phase
     if n_grid > max_points:
         raise ValueError(f"grid of {n_grid} points exceeds max_points={max_points}; coarsen the grid")
-    eg = jnp.linspace(0.0, e_max, n_ecc)
-    pg = jnp.linspace(0.0, 2 * jnp.pi, n_phase, endpoint=False)
+    eg = jnp.linspace(0.0, e_max, n_ecc, dtype=dt)
+    pg = jnp.linspace(0.0, 2 * jnp.pi, n_phase, endpoint=False, dtype=dt)
     P, E, PH = jnp.meshgrid(periods, eg, pg, indexing="ij")
     ll = profile_loglike_batch(P.ravel(), E.ravel(), PH.ravel(), d, jitter, chunk).reshape(P.shape)
     flat = ll.reshape(len(periods), -1)
@@ -171,6 +172,10 @@ def refine_profile(d, period, ecc, phase, jitter=0.0, fit_jitter=False):
     With fit_jitter=True an extra white-noise term (added in quadrature to every error, as
     Gaia's astrometric_excess_noise) is fitted jointly; use it for bright stars whose per-CCD
     errors are underestimated. Returns Campbell elements, linear parameters and their covariance.
+
+    Note: this single-source path always computes in float64 (scipy passes float64 vectors,
+    which upcast a float32 `d`); use `batch.run_pipeline(search_dtype=jnp.float32)` for the
+    float32 GPU search.
     """
     from scipy.optimize import minimize
     if fit_jitter:

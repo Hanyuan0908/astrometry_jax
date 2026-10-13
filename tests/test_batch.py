@@ -61,3 +61,23 @@ def test_batch_pipeline_recovers_mock_orbits(prerelease):
     assert np.all(sig > 5)
     assert np.mean(np.abs(P / truth["period"] - 1) < 0.05) >= 0.75
     assert np.all(np.abs(np.asarray(r["parallax"]) - truth["parallax"]) < 0.1)
+
+
+def test_float32_search_matches_float64(prerelease):
+    """Mixed precision (float32 periodogram, float64 refinement) must reproduce the float64 pipeline."""
+    eps, _ = prerelease
+    rng = np.random.default_rng(2)
+    truth = mock.random_population(rng, 8, p_range=(50, 800), a0_range=(0.5, 3.0))
+    good = [e for e in eps.values() if np.median(e.err[e.mask > 0]) < 0.5]
+    dd = batch.stack_epochs(mock.simulate(rng, good, truth))
+    periods = np.geomspace(20, 2000, 300)
+    r64 = batch.run_pipeline(dd, periods, chunk=128)
+    rm = batch.run_pipeline(dd, periods, chunk=128, search_dtype=jnp.float32)
+    assert rm["period"].dtype == jnp.float64
+    assert np.array_equal(np.asarray(r64["significance"]) > 5, np.asarray(rm["significance"]) > 5)
+    assert np.all(np.abs(np.asarray(rm["period"]) / np.asarray(r64["period"]) - 1) < 1e-3)
+    assert np.all(np.abs(np.asarray(rm["chi2"]) / np.asarray(r64["chi2"]) - 1) < 1e-3)
+    # the float32 periodogram itself stays float32 and ranks the same peak
+    ll32, _, _ = batch.batch_period_search(batch.as_dtype(dd, jnp.float32), periods, chunk=128)
+    assert ll32.dtype == jnp.float32
+    assert np.array_equal(np.argmax(np.asarray(ll32), 1), np.argmax(np.asarray(r64["periodogram"]), 1))
