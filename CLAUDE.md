@@ -23,7 +23,8 @@ give the same detections and parameters agreeing to ~1e-5 relative; tests run un
 few hundred (n_obs, 9) design matrices at once (a 480k-point vmap once froze the machine); grid
 searches go through chunked `lax.map` (`epoch.profile_loglike_batch`, `batch.batch_period_search`).
 Benchmarks on a GPU run in Google Colab via `notebooks/gpu_benchmark_colab.ipynb` (executed runs are archived
-under `notebooks/runs/`; L4, float32: 44 sources/s at N=4096 with 350 sources x 256 trials per step, 26x the Colab CPU). GitHub:
+under `notebooks/runs/`; L4, float32: 44 sources/s at N=4096 with 350 sources x 256 trials per step, 26x the Colab CPU;
+A100-80GB: 124 sources/s from N=1024 with 1024-1260 sources per step). Do not `pip install -U jax` in Colab. GitHub:
 `git@github.com:Hanyuan0908/astrometry_jax.git` (private).
 
 ## Environment and commands
