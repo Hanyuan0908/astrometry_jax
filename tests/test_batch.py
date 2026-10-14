@@ -89,3 +89,31 @@ def test_gaiamock_mock_is_recovered():
     assert np.allclose(np.asarray(out["period"]), truth["period"], rtol=0.02)
     assert np.allclose(np.asarray(out["a0_mas"]), truth["a0_mas"], rtol=0.1)
     assert np.allclose(np.asarray(out["m_2"]), truth["m_2"], rtol=0.15)
+
+
+@pytest.mark.skipif(not __import__("darkcomp.gaiamock_bridge", fromlist=["available"]).available(), reason="gaiamock not installed")
+def test_batch_joint_rv_recovery():
+    """Mixed batch: three sources with epoch RVs and one without. K, gamma and the (omega, Omega) branch are recovered."""
+    from darkcomp import gaiamock_bridge as GB
+    rng = np.random.default_rng(11)
+    truth = mock.physical_population(rng, 4, m_star=1.0, m_2=np.array([1.4, 3.0, 0.6, 1.4]), dist_pc=np.array([300.0, 1000.0, 500.0, 400.0]),
+                                     period=np.array([400.0, 900.0, 150.0, 250.0]), e_max=0.5)
+    ra, dec = GB.random_sky(rng, 4)
+    eps = GB.simulate(rng, truth, ra, dec, GB.g_from_distance(4.5, truth["dist_pc"]), "dr4")
+    eps_rv = mock.add_rvs(rng, eps, truth, n_rv=12, err_kms=1.0)
+    eps_rv[3] = eps[3]                                         # this one has no RVs
+    dd = batch.stack_epochs(eps_rv)
+    assert E.has_rv(dd) and float(dd["rv_mask"][3].sum()) == 0
+    out = batch.run_pipeline(dd, jnp.asarray(np.geomspace(20, 3000, 300)), chunk=256, source_chunk=4, refine_chunk=4, m_star=1.0)
+    o = {k: np.asarray(v) for k, v in out.items()}
+    assert np.allclose(o["period"], truth["period"], rtol=0.02)
+    for i in range(3):
+        assert abs(o["K"][i] / truth["K"][i] - 1) < 0.1, (i, o["K"][i], truth["K"][i])
+        assert abs(o["gamma"][i] - truth["gamma"][i]) < 1.5
+        assert abs(o["K"][i] / o["K_pred"][i] - 1) < 0.15                       # dark companion consistency
+        # the branch is decided by the RV sign: Omega must match; for omega compare omega - phase, since omega and the
+        # periastron phase are degenerate at low eccentricity (only their combination is measured)
+        assert np.cos(o["Omega"][i] - truth["Omega"][i]) > 0.95, (i, o["Omega"][i], truth["Omega"][i])
+        lam_fit = o["omega"][i] - o["phase"][i]; lam_true = truth["omega"][i] - 2 * np.pi * truth["t_peri"][i] / truth["period"][i]
+        assert np.cos(lam_fit - lam_true) > 0.95, (i, lam_fit, lam_true)
+    assert np.all(o["significance"] > 20)

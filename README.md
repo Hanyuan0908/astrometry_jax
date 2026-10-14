@@ -20,6 +20,10 @@ See [`docs/RUNNING.md`](docs/RUNNING.md) for installation and step-by-step usage
 Working and validated:
 
 - DR3 joint astrometry + RV fits reproduce the published neutron-star candidate solutions.
+- Epoch RVs enter the batch search itself as three more linear parameters (gamma, K cos omega, K sin omega,
+  Gaia's AstroSpectroSB1 form), so the periodogram, the refinement and the branch choice use astrometry and
+  RVs together at 30% extra cost; the physical link between K and the astrometric orbit is checked (K/K_pred)
+  and imposed in the NUTS follow-up.
 - Epoch-astrometry search reproduces Gaia BH3 and the DR4 pre-release orbits, and gives no false
   detections on the DR4 pre-release single stars and quasars.
 - Batched multi-source search runs on GPU at >100 sources per second (A100), with identical results to the CPU.
@@ -106,6 +110,15 @@ P 4242 +- 180 d, e 0.730 +- 0.009, a0 27.4 +- 0.9 mas, i 110.5 +- 0.2 deg, paral
 significance 1020 +- 43, against the real data's a0 27.11 mas, i 110.5 deg, parallax +- 0.011 mas and
 significance 1099 once its excess noise is included. gaiamock is therefore a faithful, slightly
 conservative, stand-in for DR4 epoch astrometry.
+
+**Joint astrometry + epoch RVs in the search** (`tests/test_epoch.py::test_bh3_joint_linear_fit`,
+`tests/test_batch.py::test_batch_joint_rv_recovery`): our RV curve equals gaiamock's to 1e-3 K for the
+same elements. BH3 with its 17 RVS epochs in the linear joint solve: gamma = -357.2 km/s and inclination
+110.7 deg as in the NUTS fit, K/K_pred = 1.0, and the RV sign selects the paper's (omega, Omega) branch
+(77.8, 136.2 deg). On 64 gaiamock systems with 15 mock RVs each (1 km/s): same 60/64 detections as
+astrometry alone, median chi2 improvement 9600 vs 2100, K within 10% for 55/64 and gamma within 1.5 km/s
+for 61/64; a batch mixing sources with and without RVs works. Cost: 5.1 s vs 3.9 s for the 64 sources
+on the laptop (1.3x).
 
 **Recovery on 128 gaiamock systems** (M2 log-uniform 0.2 to 10 Msun, distance 200 pc to 3 kpc, solar-type
 primary so G 11 to 17, P 30 to 1500 d, e up to 0.6, random sky): 112 of 128 detected at 6 sigma, 110 of

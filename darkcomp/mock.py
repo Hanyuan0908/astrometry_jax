@@ -63,3 +63,25 @@ def simulate(rng, templates, truth, noise_scale=1.0):
         w = ra * np.sin(psi) + dec * np.cos(psi) + p["parallax"] * f + rng.normal(0, err)
         out.append(E.EpochAstrometry.from_arrays(t + tpl.ref_jd, w, err, f, np.degrees(psi), ref_jd=tpl.ref_jd))
     return out
+
+
+def add_rvs(rng, epochs, truth, n_rv=10, err_kms=1.0, gamma_sigma=30.0, m_star=None):
+    """Attach mock epoch RVs to each EpochAstrometry (dark companion: the photocentre is the star).
+
+    n_rv epochs are drawn from the source's own transit times (RVS measures at the astrometric transits),
+    K follows from a1 = a0 / parallax with the truth's (P, e, i), gamma ~ N(0, gamma_sigma). Adds
+    truth["K"] and truth["gamma"]. Returns the new list.
+    """
+    out, Ks, gammas = [], [], []
+    for i, ep in enumerate(epochs):
+        p = {k: float(v[i]) for k, v in truth.items()}
+        t_all = np.unique(np.round(ep.t_day[ep.mask > 0], 3))
+        t = np.sort(rng.choice(t_all, size=min(n_rv, len(t_all)), replace=False))
+        K = float(orbit.rv_semi_amplitude_kms(p["a0_mas"] / p["parallax"], p["period"], p["ecc"], p["inc"]))
+        gamma = float(rng.normal(0.0, gamma_sigma))
+        rv = np.asarray(orbit.radial_velocity_kms(jnp.asarray(t), p["period"], p["ecc"], p["t_peri"], p["omega"], K, gamma))
+        rv = rv + rng.normal(0.0, err_kms, len(t))
+        out.append(ep.with_rvs(t + ep.ref_jd, rv, np.full(len(t), err_kms)))
+        Ks.append(K); gammas.append(gamma)
+    truth["K"] = np.array(Ks); truth["gamma"] = np.array(gammas)
+    return out

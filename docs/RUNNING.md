@@ -269,6 +269,21 @@ motion = the path Gaia samples, built with the `explainer-video` skill. Its numb
 `build_facts.py`, `narration.py` (edge-tts), `export.js video`, `music_piano.py`, `sfx.py`, `mix.py` from the
 skill's `scripts/`; the rendered `gaia_dark_companion.mp4` is not tracked in git.
 
+## 6e. Epoch radial velocities in the search
+
+Attach epoch RVs (JD, km/s, error) to a source and the batch search uses them in the same linear solve:
+
+```python
+ep = ep.with_rvs(jd, rv_kms, err_kms)          # EpochAstrometry with RVs; sources without RVs can share the batch
+dd = batch.stack_epochs([ep, ep_without_rvs])
+out = batch.run_pipeline(dd, periods, ...)      # adds gamma, K, K_pred, omega_rv, n_rv
+```
+
+`K_pred` is the semi-amplitude the astrometric orbit implies for a dark companion (a1 = a0/parallax);
+`K / K_pred` near 1 supports a dark companion, well above 1 a luminous one (photocentre smaller than the
+star's orbit). The RV sign fixes the (omega, Omega) branch that astrometry alone cannot. For mocks,
+`mock.add_rvs(rng, epochs, truth, n_rv=10, err_kms=1.0)` draws RV epochs from the source's transits.
+
 ## 7. Posterior for a candidate (NUTS)
 
 After the batch search, sample the full 14-parameter posterior of an interesting source, with or
@@ -292,7 +307,7 @@ theta0 = np.array([r["period"], r["ecc"], m_star, m2, r["inc"], r["Omega"], r["o
                    lin["d_ra_mas"], lin["d_dec_mas"], lin["pmra"], lin["pmdec"], r["t_peri"],
                    float(np.average(rv.rv, weights=1 / rv.err**2))])
 
-data = E.build_data(ep, rvd, m_star_prior=(0.76, 0.05))      # rvdata=None for astrometry only
+data = E.build_data(ep, rvd, m_star_prior=(0.76, 0.05))      # rvdata=None: astrometry only, or the RVs carried by ep
 theta, mcmc = nuts.run_nuts(E.log_prob, data, theta0, num_warmup=1000, num_samples=1000)
 for k_, (med, up, lo) in nuts.summarize(theta).items():
     print(f"{k_:12s} {med:10.4f} +{up:.4f} -{lo:.4f}")

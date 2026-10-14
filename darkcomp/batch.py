@@ -20,11 +20,23 @@ from .constants import GM_SUN_AU3_DAY2
 # ----------------------------------------------------------------------------- stacking
 
 def stack_epochs(epochs):
-    """List of EpochAstrometry -> pytree with a leading source axis, padded to the longest."""
+    """List of EpochAstrometry -> pytree with a leading source axis, padded to the longest.
+
+    Epoch RVs are stacked too when any source has them; sources without get all-masked RV rows,
+    so one batch can mix sources with and without RVs (the joint design is static in shape).
+    """
     n_max = max(len(e.t_day) for e in epochs)
     padded = [E.EpochAstrometry.from_arrays(e.t_day + e.ref_jd, e.w, e.err, e.plx_factor, np.degrees(e.psi),
-                                            ref_jd=e.ref_jd, n_pad=n_max) if len(e.t_day) < n_max else e
+                                            ref_jd=e.ref_jd, n_pad=n_max, transit_id=e.transit_id) if len(e.t_day) < n_max else e
               for e in epochs]
+    n_rv = max((0 if e.rv is None else len(e.rv)) for e in epochs)
+    if n_rv > 0:
+        def with_rv(p, e):
+            if e.rv is None:
+                return p.with_rvs([], [], [], n_pad=n_rv)
+            m = e.rv_mask > 0
+            return p.with_rvs(e.rv_t_day[m] + e.ref_jd, e.rv[m], e.rv_err[m], n_pad=n_rv)
+        padded = [with_rv(p, e) for p, e in zip(padded, epochs)]
     # from_arrays pads with mask 0; existing padding rows (mask 0) are preserved by passing them through
     jx = [p.as_jax() for p in padded]
     return {k: jnp.stack([j[k] for j in jx]) for k in jx[0]}
@@ -87,14 +99,23 @@ def _refine_one(d, x0, maxiter, p_bounds):
     lo = jnp.array([jnp.log(p_bounds[0]), 0.0, -10.0]); hi = jnp.array([jnp.log(p_bounds[1]), 0.95, 10.0 + 2 * jnp.pi])
     x, chi2 = E.lm_refine(d, jnp.array([jnp.log(x0[0]), x0[1], x0[2]]), 0.0, maxiter, lo, hi)
     Pb, e, ph = jnp.exp(x[0]), x[1], x[2]
-    beta, chi2, cov = E.weighted_lstsq(E.orbital_design(d, Pb, e, ph), d)
+    beta, chi2, cov = E.weighted_lstsq(E.joint_design(d, Pb, e, ph), d)
     A, B, F, G = beta[7], beta[5], beta[8], beta[6]
     a0, omega, Omega, inc = orbit.campbell_from_thiele_innes(A, B, F, G)
-    ti = beta[5:]; cti = cov[5:, 5:]
+    ti = beta[5:9]; cti = cov[5:9, 5:9]
     sig = jnp.sqrt(ti @ jnp.linalg.solve(cti, ti))
-    return dict(period=Pb, ecc=e, phase=ph, chi2=chi2, a0_mas=a0, omega=omega, Omega=Omega, inc=inc,
-                parallax=beta[2], pmra=beta[3], pmdec=beta[4], d_ra_mas=beta[0], d_dec_mas=beta[1],
-                significance=sig, A=A, B=B, F=F, G=G)
+    out = dict(period=Pb, ecc=e, phase=ph, chi2=chi2, a0_mas=a0, omega=omega, Omega=Omega, inc=inc,
+               parallax=beta[2], pmra=beta[3], pmdec=beta[4], d_ra_mas=beta[0], d_dec_mas=beta[1],
+               significance=sig, A=A, B=B, F=F, G=G)
+    if E.has_rv(d):
+        # (gamma, c1, c2) from the joint solve; RV sign resolves the (omega, Omega) branch; K_pred assumes a dark companion
+        c1, c2 = beta[10], beta[11]
+        K = jnp.hypot(c1, c2); omega_rv = jnp.arctan2(c2, c1)
+        flip = jnp.cos(omega_rv - omega) < 0
+        out.update(omega=jnp.where(flip, (omega + jnp.pi) % (2 * jnp.pi), omega), Omega=jnp.where(flip, (Omega + jnp.pi) % (2 * jnp.pi), Omega),
+                   gamma=beta[9], K=K, omega_rv=omega_rv, K_pred=orbit.rv_semi_amplitude_kms(a0 / beta[2], Pb, e, inc),
+                   n_rv=d["rv_mask"].sum())
+    return out
 
 
 def batch_refine(dd, period0, ecc0, phase0, maxiter=100, p_bounds=(1.0, 1e5), chunk=64):
@@ -153,6 +174,8 @@ def run_pipeline(dd, periods, n_ecc=4, n_phase=8, chunk=256, m_star=1.0, maxiter
     best = jnp.argmin(r["chi2"], axis=1)
     r = jax.tree_util.tree_map(lambda x: x[jnp.arange(S), best], r)
     n = dd["mask"].sum(axis=1)
+    if E.has_rv(dd):                                    # the single-star reference includes a constant-RV fit
+        chi2_5 = chi2_5 + jax.vmap(E.rv_constant_chi2)(dd)
     r["chi2_single"] = chi2_5; r["n_obs"] = n; r["dchi2"] = chi2_5 - r["chi2"]
     r["parallax_single"] = beta5[:, 2]
     r["f_m_ast"] = mass_function_astrometric(r["a0_mas"], r["parallax"], r["period"])

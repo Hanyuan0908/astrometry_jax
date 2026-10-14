@@ -41,3 +41,40 @@ def test_period_search_and_refine_recover_paper_orbit(bh3):
     assert r["chi2"] / (r["n"] - 12) < 1.2
     m2 = m2_from_a0(r["a0_mas"], lin["parallax"], r["period"], 0.76)
     assert abs(m2 - 32.70) < 1.5
+
+
+def _gaiamock():
+    from darkcomp import gaiamock_bridge as GB
+    return GB if GB.available() else None
+
+
+@pytest.mark.skipif(_gaiamock() is None, reason="gaiamock not installed")
+def test_rv_convention_matches_gaiamock():
+    """Our RV curve (gamma + K [cos(omega + f) + e cos omega], same omega as the astrometry) must equal gaiamock's."""
+    from darkcomp import orbit
+    import jax.numpy as jnp
+    gm, c = _gaiamock().load()
+    t = np.linspace(-800, 800, 97)
+    for P, e, tp, w, K, g in [(600.0, 0.3, 100.0, 2.3, 12.0, -20.0), (90.0, 0.7, -30.0, 5.5, 40.0, 15.0)]:
+        ours = np.asarray(orbit.radial_velocity_kms(jnp.asarray(t), P, e, tp, w, K, g))
+        theirs = gm.predict_radial_velocities(t, P, tp, e, w, K, g, c)
+        assert np.abs(ours - theirs).max() < 1e-3 * K
+
+
+def test_bh3_joint_linear_fit(bh3):
+    """Astrometry + the 17 RVS epoch RVs in one linear solve: branch resolved, K consistent with a0, gamma as in the NUTS fit."""
+    import pandas as pd
+    ep, _ = bh3
+    rv = pd.read_csv(f"{DATA}/gaia_bh3/epochrv.dat", names="transit_id jd rv err".split(), sep=r"\s+", comment="#")
+    epj = ep.with_rvs(rv.jd, rv.rv, rv.err); d = epj.as_jax()
+    assert E.has_rv(d) and epj.n_rv == 17
+    periods = np.geomspace(50, 8000, 600)
+    ll, be, bp = E.period_search(d, periods, n_ecc=6, n_phase=8, chunk=256)
+    k = int(np.argmax(np.asarray(ll)))
+    r = E.refine_profile(d, periods[k], float(be[k]), float(bp[k]))
+    assert abs(r["period"] - 4217) < 250                       # NUTS joint fit: 4217 +- 85
+    assert abs(r["gamma"] + 357.2) < 1.5                       # NUTS joint fit: -357.23 +- 0.41
+    assert 0.9 < r["K"] / r["K_pred"] < 1.1                    # dark companion: RV amplitude matches the astrometric orbit
+    assert abs(np.degrees(r["omega"]) % 360 - 77.77) < 3 and abs(np.degrees(r["Omega"]) % 360 - 136.2) < 3   # the paper's branch
+    assert abs(np.degrees(r["inc"]) - 110.66) < 0.5
+    assert r["chi2_rv"] / r["n_rv"] < 3
