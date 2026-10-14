@@ -16,3 +16,6 @@ explainer/*/voice_timeline.json
 explainer/*/render.log
 explainer/*/x264pass*
 .DS_Store
+results_*.npz
+render.log
+explainer/*/final_tile.png
