@@ -246,6 +246,19 @@ and a few seconds on a GPU. Results are in `docs/figures/detectability_gaiamock.
 `detectability_bright.*` and `detectability_noise5.*` (templates). Options: `--m-star`, `--abs-mag`,
 `--p-range`, `--e-max`, `--sig` (detection threshold), `--data-release`, `--all-templates`.
 
+## 6c. Picture of what is being fitted
+
+```bash
+python scripts/plot_tracks.py                                  # 1 Msun star at 500 pc, G 14, P 600 d
+python scripts/plot_tracks.py --dist 2000 --g-mag 17 --out docs/figures/astrometric_tracks_2kpc.png
+```
+
+draws, for a single star and for dark companions of 0.6, 1.4, 3 and 10 Msun: the sky path of the
+photocentre over the DR4 span, the along-scan residuals after the single-star fit at gaiamock's scan
+times (step 1 of the pipeline), the periodogram (step 2) and the residuals after the orbital fit with
+the recovered a0, significance and M2 (step 3). `docs/figures/astrometric_tracks.png` and
+`astrometric_tracks_2kpc.png` are the two cases above.
+
 ## 7. Posterior for a candidate (NUTS)
 
 After the batch search, sample the full 14-parameter posterior of an interesting source, with or
