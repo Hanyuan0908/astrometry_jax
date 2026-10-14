@@ -92,6 +92,13 @@ simulator: nominal scanning law at any sky position, G-dependent along-scan erro
 and our pipeline return the same P, e, a0, parallax and inclination to the printed precision (4 test
 systems, P 150 to 1500 d, G 12 to 16), and `tests/test_batch.py` recovers P to 2%, a0 to 10% and M2 to 15%.
 
+**Recovery on 128 gaiamock systems** (M2 log-uniform 0.2 to 10 Msun, distance 200 pc to 3 kpc, solar-type
+primary so G 11 to 17, P 30 to 1500 d, e up to 0.6, random sky): 112 of 128 detected at 6 sigma, 110 of
+those with the period within 5%; the non-detections have a0 of 0.08 mas median, 0.21 mas at most. Over the
+110 recovered orbits the median relative errors are 1.4% in a0, 0.7% in parallax, 3% in M2, 1.5 deg in
+inclination; eccentricity is the least constrained (median 12%). float32 and float64 give the identical
+detection set, 111 of 112 periods equal to 0.1%, a0 and parallax differing by 1e-5 mas in the median.
+
 **Detectability versus companion mass and distance** (`scripts/detectability.py`, gaiamock mocks at random
 sky positions, DR4 scanning law, solar-type primary with M_G = 4.5 so G = 13.0, 14.5, 16.0, 18.0, 19.5 at
 0.5, 1, 2, 5, 10 kpc; dark companion; P in 30 to 1500 d; 20 systems per cell; detection = 5 sigma):
