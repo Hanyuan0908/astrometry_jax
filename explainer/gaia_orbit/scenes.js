@@ -88,38 +88,42 @@ function orbit(lt, s) {
   compass(v, ramp(lt, at(s, 0), at(s, 0, 1)) * o);
 }
 
-// ---------- 3 · put Gaia on its real orbit: the parallax ellipse; orbit + parallax = the rosette
+// ---------- 3 · put Gaia on its real orbit: Sun, Earth and Gaia move in lock-step with the star on the sky
+function inset(i, a, cx = 300, cy = 300, r = 150) {       // Sun at the centre, Earth + Gaia at the barycentric position of time index i
+  if (a <= 0) return;
+  dot(cx, cy, 14, C.GOLD, a); write("Sun", cx + 22, cy + 10, 24, C.GOLD, 1, { alpha: a });
+  ctx.save(); ctx.globalAlpha = a * 0.6; ctx.strokeStyle = C.GREY; ctx.lineWidth = 1.5; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke(); ctx.restore();
+  const ex = cx + r * F.earth_au.x[i], ey = cy - r * F.earth_au.y[i];
+  dot(ex, ey, 9, C.BLUE, a); const gx = ex + 26 * F.earth_au.x[i], gy = ey - 26 * F.earth_au.y[i];
+  dot(gx, gy, 5, C.WHITE, a); write("Gaia", gx + 12, gy - 10, 22, C.WHITE, 1, { alpha: a }); write("Earth", ex - 70, ey + 34, 22, C.BLUE, 1, { alpha: a });
+}
 function parallax(lt, s) {
   const o = outro(lt, s), v = sky, iP = P_IDX(), iY = YR_IDX(), n = F.t_day.length - 1;
-  // left inset: Sun, Earth's orbit, Earth + Gaia moving
-  const ins = { cx: 300, cy: 300, r: 150 }, pi = ramp(lt, at(s, 0), at(s, 0, 1.2)) * o;
-  const iE = Math.round(clamp((lt - at(s, 0, 1.0)) / (at(s, 1, 0.5) - at(s, 0, 1.0))) * iY);
-  if (pi > 0) {
-    dot(ins.cx, ins.cy, 14, C.GOLD, pi); write("Sun", ins.cx + 22, ins.cy + 10, 24, C.GOLD, 1, { alpha: pi });
-    ctx.save(); ctx.globalAlpha = pi * 0.6; ctx.strokeStyle = C.GREY; ctx.lineWidth = 1.5; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.arc(ins.cx, ins.cy, ins.r, 0, 7); ctx.stroke(); ctx.restore();
-    const ex = ins.cx + ins.r * F.earth_au.x[iE], ey = ins.cy - ins.r * F.earth_au.y[iE];
-    dot(ex, ey, 9, C.BLUE, pi); const gx = ex + 0.0 + 26 * F.earth_au.x[iE], gy = ey - 26 * F.earth_au.y[iE];
-    dot(gx, gy, 5, C.WHITE, pi); write("Gaia", gx + 12, gy - 10, 22, C.WHITE, 1, { alpha: pi }); write("Earth", ex - 70, ey + 34, 22, C.BLUE, 1, { alpha: pi });
-    write("Gaia orbits the Sun with the Earth", 110, 520, 26, C.GREY, ramp(lt, at(s, 0, 2.0), at(s, 0, 3.0)), { alpha: o });
-  }
-  // sky view: the orbit ellipse stays (blue), the parallax ellipse is drawn over one year (red)
+  const tA = at(s, 0, 1.0), tB = at(s, 2, 0.8), tEnd = s.dur - 1.0;
+  const phaseA = lt < tB;
+  // phase A: two years pass, a single star loops twice; phase B: the full span again, now with the companion
+  const iA = Math.round(clamp((lt - tA) / (tB - tA)) * 2 * iY), iB = Math.round(clamp((lt - tB) / (tEnd - tB)) * n);
+  const i = phaseA ? iA : iB;
+  inset(i, ramp(lt, at(s, 0), at(s, 0, 1.2)) * o);
+  write("Gaia orbits the Sun with the Earth", 110, 520, 26, C.GREY, ramp(lt, at(s, 0, 2.0), at(s, 0, 3.0)), { alpha: o });
   line(v.cx - 14, v.cy, v.cx + 14, v.cy, C.WHITE, 2, 1, { alpha: o }); line(v.cx, v.cy - 14, v.cx, v.cy + 14, C.WHITE, 2, 1, { alpha: o });
-  const fadeOrbit = 1 - 0.6 * ramp(lt, at(s, 1), at(s, 1, 1.0));
-  path(track(["star"], 0, iP), C.BLUE, 4, 1, { alpha: o * fadeOrbit });
-  write("orbit", SX(F.star.ra[0]) + 18, SY(F.star.dec[0]) - 14, 26, C.BLUE, 1, { alpha: o * fadeOrbit });
-  const pp = ramp(lt, at(s, 1), at(s, 1, 3.0));
-  if (pp > 0) { path(track(["parallax"], 0, iY), C.RED, 4, pp, { alpha: o }); write("parallax ellipse, ϖ = 2 mas", 1250, 230, 30, C.RED, ramp(lt, at(s, 1, 1.5), at(s, 1, 2.5)), { alpha: o }); }
-  // the sum: traced over the full span while the star moves along it
-  const f2 = clamp((lt - at(s, 2, 0.8)) / (s.dur - 1.2 - at(s, 2, 0.8))); const i2 = Math.round(f2 * n);
-  if (f2 > 0) {
-    path(track(["star", "parallax"], 0, i2), C.WHITE, 3, 1, { alpha: o });
-    const ps = pos(["star", "parallax"], i2); starDot(ps[0], ps[1], o);
-    write("orbit + parallax", 1250, 290, 30, C.WHITE, ramp(lt, at(s, 2, 1.0), at(s, 2, 2.0)), { alpha: o });
-    const yr = (F.t_day[i2] / 365.25 + F.system.year0).toFixed(1);
-    write(yr, 1700, 1000, 34, C.GREY, 1, { align: "right", alpha: o });
-  } else {
-    const ps = pos(["star"], 0); starDot(ps[0], ps[1], o);
+  // the single star: traces the red parallax ellipse as the Earth goes round
+  const redA = phaseA ? 1 : 0.45;
+  path(track(["parallax"], 0, Math.min(iA, iY)), C.RED, 4, 1, { alpha: o * redA });
+  if (phaseA) { const ps = pos(["parallax"], iA); starDot(ps[0], ps[1], ramp(lt, at(s, 0), at(s, 0, 0.6)) * o);
+    write("a single star, no companion", 1250, 230, 30, C.WHITE, ramp(lt, at(s, 1), at(s, 1, 1.0)), { alpha: o }); }
+  write("parallax ellipse, ϖ = 2 mas", 1250, 290, 30, C.RED, ramp(lt, at(s, 1, 3.5), at(s, 1, 4.5)), { alpha: o });
+  write("same loop every year", 1250, 335, 26, C.GREY, ramp(lt, at(s, 1, 5.5), at(s, 1, 6.5)), { alpha: o * (phaseA ? 1 : 0.5) });
+  // phase B: the orbit comes back and the star follows orbit + parallax
+  if (!phaseA) {
+    const pb = ramp(lt, tB, tB + 1.0);
+    path(track(["star"], 0, iP), C.BLUE, 3, 1, { alpha: o * pb * 0.5 });
+    path(track(["star", "parallax"], 0, iB), C.WHITE, 3, 1, { alpha: o });
+    const ps = pos(["star", "parallax"], iB); starDot(ps[0], ps[1], o);
+    write("+ its companion:  orbit + parallax", 1250, 400, 30, C.WHITE, ramp(lt, at(s, 2, 1.2), at(s, 2, 2.2)), { alpha: o });
   }
+  const yr = (F.t_day[i] / 365.25 + F.system.year0).toFixed(1);
+  write(yr, 1700, 1000, 34, C.GREY, 1, { align: "right", alpha: o * ramp(lt, tA, tA + 0.5) });
   compass(v, o);
 }
 
@@ -151,36 +155,44 @@ function pm(lt, s) {
   compass(v, o);
 }
 
-// ---------- 5 · what Gaia measures: one coordinate per transit, along the scan direction
+// ---------- 5 · what Gaia measures: its field of view sweeps across the sky; one coordinate per crossing
 function scans(lt, s) {
   const o = outro(lt, s), v = sky, n = F.t_day.length - 1, S = F.scans, N = S.t_day.length;
   line(v.cx - 14, v.cy, v.cx + 14, v.cy, C.WHITE, 2, 1, { alpha: o }); line(v.cx, v.cy - 14, v.cx, v.cy + 14, C.WHITE, 2, 1, { alpha: o });
-  // the path (pm removed, so it fits) stays faint; the measurements appear one by one during line 1
   const showPath = 1 - 0.75 * ramp(lt, at(s, 0, 1.0), at(s, 0, 2.0)) + 0.75 * ramp(lt, at(s, 2, 1.0), at(s, 2, 2.5));
   path(track(["star", "parallax"], 0, n), C.WHITE, 3, 1, { alpha: o * showPath });
-  const k0 = at(s, 0, 3.0), k1 = at(s, 1, 4.0);                                 // measurements arrive between these times
-  const first = ramp(lt, at(s, 0, 1.2), at(s, 0, 2.2));
-  for (let k = 0; k < N; k++) {
-    const pk = k === 0 ? first : ramp(lt, k0 + (k - 1) / (N - 1) * (k1 - k0), k0 + (k - 1) / (N - 1) * (k1 - k0) + 0.4);
-    if (pk <= 0) continue;
-    const i = idxAt(S.t_day[k]); const [x, y] = pos(["star", "parallax"], i);
-    const sp = Math.sin(S.psi[k]), cp = Math.cos(S.psi[k]);
-    // the measured coordinate is along the scan direction (sin psi, cos psi) in (RA, Dec); the unknown is across it
-    const mx = x - S.resid[k] * sp * v.scale, my = y - S.resid[k] * cp * v.scale;     // measured point (model + residual)
-    const ax = cp, ay = sp;                                                            // across-scan direction on screen
-    const Lk = k === 0 ? 700 : 220;
-    line(mx - ax * Lk * pk, my - ay * Lk * pk, mx + ax * Lk * pk, my + ay * Lk * pk, C.GOLD, k === 0 ? 2 : 1, 1, { alpha: o * (k === 0 ? 0.9 : 0.3) });
-    dot(mx, my, 5, C.GOLD, o * pk);
+  // geometry of crossing k: star position on screen, along-scan direction (dx, dy), across-scan direction (ax, ay)
+  const geo = k => { const i = idxAt(S.t_day[k]); const [x, y] = pos(["star", "parallax"], i); const sp = Math.sin(S.psi[k]), cp = Math.cos(S.psi[k]);
+    return { x, y, mx: x - S.resid[k] * sp * v.scale, my: y - S.resid[k] * cp * v.scale, dx: -sp, dy: -cp, ax: cp, ay: -sp }; };
+  // a sweep: Gaia's field of view (a band perpendicular to the scan direction) moves along it and crosses the star
+  const sweep = (k, t0, t1, slow) => {
+    const f = clamp((lt - t0) / (t1 - t0)); if (f <= 0) return 0;
+    const g = geo(k), u = lerp(-1000, 1000, f), fx = g.mx + g.dx * u, fy = g.my + g.dy * u;
+    if (f < 1) {
+      ctx.save(); ctx.globalAlpha = o * 0.22; ctx.strokeStyle = C.GOLD; ctx.lineWidth = 70;
+      ctx.beginPath(); ctx.moveTo(fx - g.ax * 1400, fy - g.ay * 1400); ctx.lineTo(fx + g.ax * 1400, fy + g.ay * 1400); ctx.stroke(); ctx.restore();
+      line(fx - g.ax * 1400, fy - g.ay * 1400, fx + g.ax * 1400, fy + g.ay * 1400, C.GOLD, 2, 1, { alpha: o * 0.8 });
+      if (slow) { arrow(fx - g.dx * 160, fy - g.dy * 160, fx - g.dx * 40, fy - g.dy * 40, C.GOLD, 3, 1, o); write("Gaia's field of view sweeps this way", fx - g.dx * 100 + 40 * (g.ax > 0 ? 1 : -1), fy - g.dy * 100 - 30, 24, C.GOLD, 1, { alpha: o, align: g.ax > 0 ? "left" : "right" }); }
+    }
+    return u >= 0 ? 1 : 0;                                   // the crossing has happened
+  };
+  const mark = (k, a, long = false) => { if (a <= 0) return; const g = geo(k), L = long ? 800 : 220;
+    line(g.mx - g.ax * L, g.my - g.ay * L, g.mx + g.ax * L, g.my + g.ay * L, C.GOLD, long ? 2 : 1, 1, { alpha: o * a * (long ? 0.9 : 0.3) }); dot(g.mx, g.my, 5, C.GOLD, o * a); };
+  // crossing 0: one slow sweep while line 0 is spoken
+  const c0 = sweep(0, at(s, 0, 3.0), at(s, 0, 7.5), true); mark(0, c0, true);
+  if (c0) { const g = geo(0);
+    const tick = ramp(lt, at(s, 0, 7.6), at(s, 0, 8.4));           // the measured number: the star's coordinate along the sweep
+    arrow(g.mx - g.dx * 300, g.my - g.dy * 300, g.mx, g.my, C.GOLD, 3, tick, o);
+    write("measured: position along the sweep", 180, 960, 28, C.GOLD, tick, { alpha: o * (1 - ramp(lt, at(s, 1, 6.0), at(s, 1, 6.8))) });
+    write("across the sweep: unknown  →  the star is somewhere on this line", 180, 1005, 28, C.GOLD, ramp(lt, at(s, 1, 0.2), at(s, 1, 1.0)), { alpha: o * (1 - ramp(lt, at(s, 1, 6.0), at(s, 1, 6.8))) });
   }
-  if (first > 0) {
-    const i = idxAt(S.t_day[0]); const [x, y] = pos(["star", "parallax"], i);
-    const sp = Math.sin(S.psi[0]), cp = Math.cos(S.psi[0]);
-    arrow(x - sp * 90 * v.scale / 120 * 1.6, y - cp * 90 * 1.6, x + sp * 90 * 1.6, y + cp * 90 * 1.6, C.GOLD, 3, first, o);
-    write("scan direction", x + sp * 160 + 20, y + cp * 160, 26, C.GOLD, first, { alpha: o });
-    write("the star is somewhere on this line", 180, 1000, 28, C.GOLD, ramp(lt, at(s, 0, 2.6), at(s, 0, 3.6)), { alpha: o * (1 - ramp(lt, at(s, 1, 2), at(s, 1, 2.8))) });
-  }
-  write("one number per crossing", 180, 150, 34, C.GOLD, ramp(lt, at(s, 0, 0.3), at(s, 0, 1.3)), { alpha: o });
-  write("62 crossings, 0.05 mas each", 180, 200, 30, C.GOLD, ramp(lt, at(s, 1), at(s, 1, 1.0)), { alpha: o });
+  // crossings 1-3: quick sweeps; the rest pop in
+  let shown = 1;
+  for (let k = 1; k <= 3; k++) { const t0 = at(s, 1, 3.0 + (k - 1) * 1.1); const ck = sweep(k, t0, t0 + 0.9, false); mark(k, ck); shown += ck; }
+  const k0 = at(s, 1, 6.4), k1 = at(s, 2, 1.0);
+  for (let k = 4; k < N; k++) { const tk = k0 + (k - 4) / (N - 5) * (k1 - k0); mark(k, ramp(lt, tk, tk + 0.4)); }
+  write("one number per crossing", 180, 150, 34, C.GOLD, ramp(lt, at(s, 0, 2.0), at(s, 0, 3.0)), { alpha: o });
+  write("62 crossings, 0.05 mas each", 180, 200, 30, C.GOLD, ramp(lt, at(s, 1, 6.6), at(s, 1, 7.6)), { alpha: o });
   write("the fit: parallax + proper motion + orbit", 180, 290, 30, C.WHITE, ramp(lt, at(s, 2), at(s, 2, 1.2)), { alpha: o });
   write("through all of them", 180, 335, 30, C.WHITE, ramp(lt, at(s, 2, 1.2), at(s, 2, 2.0)), { alpha: o });
   compass(v, o);
@@ -213,7 +225,7 @@ KIT.run({
   load: async () => Object.assign(F, await fetch("facts.json").then(r => r.json())),
   events: ev => {
     ev("orbit", 0.8, "shimmer", { pan: 0 });
-    ev("parallax", 0.9, "whoosh", { dur: 1.4, pan: -0.5 });
+    ev("parallax", 0.9, "whoosh", { dur: 1.4, pan: -0.5 }); ev("scans", 5.2, "whoosh", { dur: 1.6, pan: 0 });
     ev("pm", 1.1, "whoosh", { dur: 1.8, pan: 0.3 });
     ev("end", 8.0, "ping", { pan: 0 });
   },
