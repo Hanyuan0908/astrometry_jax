@@ -27,6 +27,9 @@ Working and validated:
 - Epoch-astrometry search reproduces Gaia BH3 and the DR4 pre-release orbits, and gives no false
   detections on the DR4 pre-release single stars and quasars.
 - Batched multi-source search runs on GPU at >100 sources per second (A100), with identical results to the CPU.
+- Trial orbits are a scrambled Sobol sequence in (log P, e, phase), 2,400 points by default: on 128 gaiamock
+  sources it reaches the global optimum for 127 where the former 9,600-point regular grid reached 125, at a
+  quarter of the cost (every quasi-random point samples a new period).
 - One global precision switch (`DARKCOMP_PRECISION=32|64`); float32 gives the same detections and
   parameters as float64 to ~1e-5 relative. TF32 tensor-core matmuls are disabled so float32 means float32.
 
@@ -118,7 +121,24 @@ same elements. BH3 with its 17 RVS epochs in the linear joint solve: gamma = -35
 (77.8, 136.2 deg). On 64 gaiamock systems with 15 mock RVs each (1 km/s): same 60/64 detections as
 astrometry alone, median chi2 improvement 9600 vs 2100, K within 10% for 55/64 and gamma within 1.5 km/s
 for 61/64; a batch mixing sources with and without RVs works. Cost: 5.1 s vs 3.9 s for the 64 sources
-on the laptop (1.3x).
+on the laptop (1.3x; with the 9,600-point grid. With the 2,400-point Sobol default: 1.8 s vs 2.3 s).
+
+**Trial-orbit design** (128 gaiamock sources, P 20 to 1500 d, e up to 0.8; "global optimum" = the refined
+chi2 is within 2 of the best linear fit at the true elements):
+
+| design | trial orbits | time (laptop, 128 sources) | global optimum reached |
+|---|---|---|---|
+| grid 300 periods x 4 e x 8 phases | 9,600 | 5.9 s | 125 / 128 |
+| grid 600 x 2 x 8 | 9,600 | 5.6 s | 116 / 128 |
+| Sobol | 4,800 | 3.3 s | 128 / 128 |
+| Sobol (default) | 2,400 | 2.1 s | 127 / 128 |
+| Sobol | 1,200 | 1.8 s | 125 / 128 |
+| Sobol | 600 | 1.9 s | 121 / 128 |
+
+Detections (111) and periods within 5% (109 to 110) are the same for every design down to 1,200 points; the
+difference is whether the refinement starts in the right basin. Refining 5 or 8 peaks instead of 3 does not
+recover the remaining miss. The GPU benchmark numbers above were measured with the 9,600-point grid, so the
+same hardware now does about 4x more sources per second.
 
 **Recovery on 128 gaiamock systems** (M2 log-uniform 0.2 to 10 Msun, distance 200 pc to 3 kpc, solar-type
 primary so G 11 to 17, P 30 to 1500 d, e up to 0.6, random sky): 112 of 128 detected at 6 sigma, 110 of

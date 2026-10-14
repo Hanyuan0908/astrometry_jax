@@ -52,7 +52,7 @@ Network access (astroquery to the Gaia archive) is only needed for sources not i
   parameters (gamma, K cos omega, K sin omega; Gaia's AstroSpectroSB1 form) via `joint_design`; sources
   without RVs carry all-masked RV rows and dead columns are pinned by `weighted_lstsq`. The RV sign
   resolves the (omega, Omega) branch; `K_pred` is the dark-companion prediction from a0/parallax (`weighted_lstsq`: column-scaled normal equations + Cholesky; as accurate as
-  QR here and 1.5x faster). `period_search` evaluates a (P, e, phase) grid in memory-safe chunks and
+  QR here and 1.5x faster). `period_search` evaluates a (P, e, phase) grid in memory-safe chunks (single-source path) and
   `refine_profile` polishes with `lm_refine`, a fixed-iteration Levenberg-Marquardt over
   (log P, e, phase) using a forward-mode Jacobian (optionally iterating a jitter/excess-noise term,
   needed for bright stars like HD 114762). Do not go back to line-search quasi-Newton over an
@@ -62,7 +62,10 @@ Network access (astroquery to the Gaia archive) is only needed for sources not i
   keep `used_by_agis_al` and not `multipeak`, as ESA's gaia-supdate does). Time = ns since 2010.0 TCB + bary corr.
 - `darkcomp/batch.py` — stacked/padded multi-source pipeline: vmapped single-star fit, `lax.map`
   over sources of the chunked periodogram, vmapped LM refinement of the top-3 peaks, Campbell
-  elements, significance and companion mass; with RVs also gamma, K, K_pred, omega_rv (cost +30%). This is the candidate filter; NUTS (`nuts.py`) is for
+  elements, significance and companion mass; with RVs also gamma, K, K_pred, omega_rv (cost +30%).
+  Trial orbits are a scrambled Sobol sequence (`trial_orbits`, default 2,400 points in (log P, e, phase));
+  it beat the 9,600-point regular grid on 128 mocks (127 vs 125 global optima) at a quarter of the cost.
+  Do not go below ~1,200 points. This is the candidate filter; NUTS (`nuts.py`) is for
   follow-up of individual candidates only. Grid e <= 0.6 by design: high-e grid points
   overfit noise (spurious e -> 1 solutions).
 - `darkcomp/lm.py` — fixed-iteration Levenberg-Marquardt (jit/vmap-safe, precision-agnostic). Used by

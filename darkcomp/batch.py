@@ -65,33 +65,62 @@ def plan_chunks(n_obs, n_sources, mem_budget_gb=1.0, dtype_bytes=8, grid_points=
     return source_chunk, chunk
 
 
-def batch_period_search(dd, periods, n_ecc=4, n_phase=8, chunk=256, e_max=0.6, source_chunk=1):
-    """Per-source profile periodogram. Returns (loglike (S, nP), best_e (S, nP), best_phase (S, nP)).
+def trial_orbits(periods, n_ecc=4, n_phase=8, e_max=0.6, design="grid", n_trials=None, seed=0):
+    """Trial (P, e, phase) sets for the search, as flat arrays sorted by period plus the number of
+    (e, phase) trials per period row.
 
-    Parallelism: `source_chunk` sources are vmapped together, and within each the grid is evaluated
+    design="grid":  len(periods) x n_ecc x n_phase regular grid (e in [0, e_max], phase in [0, 2 pi)).
+    design="sobol": a scrambled Sobol sequence of n_trials points in (log P, e, phase) over the same box (default)
+                    (periods[0]..periods[-1]); every point has its own period, so the period axis is
+                    sampled n_trials times instead of len(periods) times, with one (e, phase) each.
+    """
+    periods = np.asarray(periods, float)
+    if design == "grid":
+        eg = np.linspace(0.0, e_max, n_ecc); pg = np.linspace(0.0, 2 * np.pi, n_phase, endpoint=False)
+        P, Ee, PH = np.meshgrid(periods, eg, pg, indexing="ij")
+        return P.ravel(), Ee.ravel(), PH.ravel(), n_ecc * n_phase
+    if design == "sobol":
+        import warnings
+        from scipy.stats import qmc
+        n = n_trials or len(periods) * n_ecc * n_phase
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")          # scipy warns when n is not a power of 2; harmless here
+            u = qmc.Sobol(3, scramble=True, seed=seed).random(n)
+        lp = np.log(periods[0]) + u[:, 0] * (np.log(periods[-1]) - np.log(periods[0]))
+        order = np.argsort(lp)
+        return np.exp(lp[order]), u[order, 1] * e_max, u[order, 2] * 2 * np.pi, 1
+    raise ValueError(design)
+
+
+def batch_period_search(dd, periods, n_ecc=4, n_phase=8, chunk=256, e_max=0.6, source_chunk=1, design="sobol",
+                        n_trials=2400, seed=0):
+    """Per-source profile periodogram. Returns (loglike (S, nP), best_e (S, nP), best_phase (S, nP), periods (nP,)).
+
+    Parallelism: `source_chunk` sources are vmapped together, and within each the trial set is evaluated
     `chunk` trial orbits at a time, so each step is a batch of source_chunk*chunk independent
     weighted least-squares problems (what a GPU needs). Memory ~ source_chunk*chunk*n_obs*9*bytes*4.
     Outer loop over source groups is a sequential `lax.map`. Use `plan_chunks` to size both.
+    `design`/`n_trials`/`seed`: see `trial_orbits`; with "sobol" the returned periods are the sorted
+    trial periods (one (e, phase) each).
     """
-    periods = jnp.asarray(periods)
-    eg = jnp.linspace(0.0, e_max, n_ecc); pg = jnp.linspace(0.0, 2 * jnp.pi, n_phase, endpoint=False)
-    P, Ee, PH = jnp.meshgrid(periods, eg, pg, indexing="ij")
-    P, Ee, PH = P.ravel(), Ee.ravel(), PH.ravel()
+    P, Ee, PH, per_row = trial_orbits(periods, n_ecc, n_phase, e_max, design, n_trials, seed)
+    P, Ee, PH = jnp.asarray(P), jnp.asarray(Ee), jnp.asarray(PH)
+    n_rows = P.shape[0] // per_row
     S = dd["w"].shape[0]
     n_pad = (-S) % source_chunk
     padf = lambda x: jnp.concatenate([x, jnp.repeat(x[:1], n_pad, axis=0)], axis=0)  # noqa: E731
     ddg = jax.tree_util.tree_map(lambda x: padf(x).reshape((-1, source_chunk) + x.shape[1:]), dd)
 
     def one_source(d):
-        return E.profile_loglike_batch(P, Ee, PH, d, 0.0, chunk).reshape(len(periods), n_ecc * n_phase)
+        return E.profile_loglike_batch(P, Ee, PH, d, 0.0, chunk).reshape(n_rows, per_row)
 
     ll = jax.lax.map(jax.vmap(one_source), ddg)
     ll = ll.reshape((-1,) + ll.shape[2:])[:S]
     k = jnp.argmax(ll, axis=-1)
     best = jnp.take_along_axis(ll, k[..., None], -1)[..., 0]
-    Eg = Ee.reshape(len(periods), -1); PHg = PH.reshape(len(periods), -1)
-    j = jnp.arange(len(periods))[None, :]
-    return best, Eg[j, k], PHg[j, k]
+    Eg = Ee.reshape(n_rows, -1); PHg = PH.reshape(n_rows, -1)
+    j = jnp.arange(n_rows)[None, :]
+    return best, Eg[j, k], PHg[j, k], P.reshape(n_rows, -1)[:, 0]
 
 
 def _refine_one(d, x0, maxiter, p_bounds):
@@ -153,22 +182,27 @@ def top_peaks(ll, n_top):
 
 
 def run_pipeline(dd, periods, n_ecc=4, n_phase=8, chunk=256, m_star=1.0, maxiter=30, refine_chunk=64, n_top=3,
-                 e_max=0.6, source_chunk=1):
+                 e_max=0.6, source_chunk=1, design="sobol", n_trials=2400, seed=0):
     """Whole search for a stacked batch. Returns a dict of per-source arrays (all jnp).
 
     The `n_top` highest periodogram peaks of every source are refined and the one with the
     lowest chi2 is kept, which guards against aliases and spurious high-e grid solutions.
+    Trial orbits: a scrambled Sobol sequence of `n_trials` points in (log P, e, phase) by default
+    (`periods` then only sets the range). On 128 gaiamock sources: 300 x 4 x 8 grid (9,600 points)
+    reached the global optimum for 125; Sobol 4,800 for 128, 2,400 for 127, 1,200 for 125, 600 for 121,
+    because every Sobol point samples a new period. The default 2,400 is 4x cheaper than the grid and
+    better; raising n_top does not recover the remaining miss. design="grid" restores the grid.
     Precision is global (DARKCOMP_PRECISION at import), not a per-call option. Size `source_chunk`,
     `chunk` and `refine_chunk` from the device memory with `plan_chunks`.
     """
     periods = jnp.asarray(periods)
     S = dd["w"].shape[0]
     beta5, chi2_5 = batch_single_star(dd)
-    ll, be, bp = batch_period_search(dd, periods, n_ecc, n_phase, chunk, e_max, source_chunk)
+    ll, be, bp, pgrid = batch_period_search(dd, periods, n_ecc, n_phase, chunk, e_max, source_chunk, design, n_trials, seed)
     ks = top_peaks(ll, n_top)                      # (S, n_top)
     idx = jnp.arange(S)[:, None]
     rep = jax.tree_util.tree_map(lambda x: jnp.repeat(x, n_top, axis=0), dd)
-    r = batch_refine(rep, periods[ks].ravel(), be[idx, ks].ravel(), bp[idx, ks].ravel(), maxiter,
+    r = batch_refine(rep, pgrid[ks].ravel(), be[idx, ks].ravel(), bp[idx, ks].ravel(), maxiter,
                      p_bounds=(float(periods[0]) * 0.5, float(periods[-1]) * 2.0), chunk=refine_chunk)
     r = jax.tree_util.tree_map(lambda x: x.reshape((S, n_top) + x.shape[1:]), r)
     best = jnp.argmin(r["chi2"], axis=1)

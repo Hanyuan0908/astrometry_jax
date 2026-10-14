@@ -163,9 +163,10 @@ for i, sid in enumerate(eps):
                f"  sig={sig[i]:6.1f}  dchi2={float(out['dchi2'][i]):8.1f}  M2={float(out['m_2'][i]):.2f} Msun")
 ```
 
-What the pipeline does per source: 5-parameter single-star fit; profile-likelihood periodogram over
-300 periods x 4 eccentricities (e <= 0.6) x 8 phases; Levenberg-Marquardt refinement of the three
-highest local maxima, keeping the lowest chi2; Campbell elements; detection significance (the
+What the pipeline does per source: 5-parameter single-star fit; profile likelihood at 2,400 trial orbits
+drawn as a scrambled Sobol sequence in (log P, e <= 0.6, phase) over the period range (`design="grid"`
+gives the old 300 x 4 x 8 grid; `n_trials` and `seed` are tunable); Levenberg-Marquardt refinement of
+the three highest local maxima of the period-sorted periodogram, keeping the lowest chi2; Campbell elements; detection significance (the
 Thiele-Innes vector against zero through its covariance); astrometric mass function and companion
 mass for the given `m_star`.
 
