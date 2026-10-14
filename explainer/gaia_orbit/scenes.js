@@ -152,20 +152,25 @@ function pm(lt, s) {
   compass(v, o);
 }
 
-// ---------- 5 · what Gaia measures: the star moves along its path; each crossing of Gaia's field of view leaves a shadow
+// ---------- 5 · what Gaia measures: the star runs along its TRUE path (orbit + parallax + proper motion); the camera
+// follows it while every crossing of Gaia's field of view leaves a shadow, then pulls back to the whole track
+const PARTS = ["star", "parallax", "pm"];
 function scans(lt, s) {
-  const o = outro(lt, s), v = sky, n = F.t_day.length - 1, S = F.scans, N = S.t_day.length;
-  line(v.cx - 14, v.cy, v.cx + 14, v.cy, C.WHITE, 2, 1, { alpha: o }); line(v.cx, v.cy - 14, v.cx, v.cy + 14, C.WHITE, 2, 1, { alpha: o });
-  // geometry of crossing k: star position, along-scan direction (dx, dy) and across-scan direction (ax, ay) on screen
-  const geo = k => { const i = idxAt(S.t_day[k]); const [x, y] = pos(["star", "parallax"], i); const sp = Math.sin(S.psi[k]), cp = Math.cos(S.psi[k]);
-    return { x, y, mx: x - S.resid[k] * sp * v.scale, my: y - S.resid[k] * cp * v.scale, dx: -sp, dy: -cp, ax: cp, ay: -sp, e: S.err[k] * v.scale }; };
-  // the star runs along the path during lines 1-2; before that it waits at the first crossing
+  const o = outro(lt, s), n = F.t_day.length - 1, S = F.scans, N = S.t_day.length;
   const i0 = idxAt(S.t_day[0]), tRun0 = at(s, 1), tRun1 = at(s, 2, 1.0);
   const fr = clamp((lt - tRun0) / (tRun1 - tRun0)), i = Math.round(i0 + fr * (n - i0));
-  const tk = k => tRun0 + (idxAt(S.t_day[k]) - i0) / (n - i0) * (tRun1 - tRun0);          // when crossing k happens on screen
-  const showPath = 0.25 + 0.75 * ramp(lt, at(s, 2, 1.0), at(s, 2, 2.5));
-  path(track(["star", "parallax"], 0, n), C.WHITE, 3, 1, { alpha: o * showPath * (1 - 0.75 * ramp(lt, at(s, 0, 1.0), at(s, 0, 2.0))) });
-  // a sweep: Gaia's field of view (a band perpendicular to the scan direction) moves along it and crosses the star
+  // camera: follow the star at 120 px/mas, then zoom out to the full path (same framing as the proper-motion scene)
+  const zf = ramp(lt, at(s, 2, 0.2), at(s, 2, 2.0));
+  const raS = F.star.ra[i] + F.parallax.ra[i] + F.pm.ra[i], decS = F.star.dec[i] + F.parallax.dec[i] + F.pm.dec[i];
+  const follow = { cx: 960 + raS * 120, cy: 560 + decS * 120, scale: 120 }, wide = { cx: 1180, cy: 760, scale: 16 };
+  const v = { cx: lerp(follow.cx, wide.cx, zf), cy: lerp(follow.cy, wide.cy, zf), scale: Math.exp(lerp(Math.log(120), Math.log(16), zf)) };
+  const geo = k => { const j = idxAt(S.t_day[k]); const [x, y] = pos(PARTS, j, v); const sp = Math.sin(S.psi[k]), cp = Math.cos(S.psi[k]);
+    return { x, y, mx: x - S.resid[k] * sp * v.scale, my: y - S.resid[k] * cp * v.scale, dx: -sp, dy: -cp, ax: cp, ay: -sp, e: S.err[k] * v.scale }; };
+  const tk = k => tRun0 + (idxAt(S.t_day[k]) - i0) / (n - i0) * (tRun1 - tRun0);
+  // the path so far (faint while the shadows are laid down, full at the end)
+  const showPath = 0.3 + 0.7 * ramp(lt, at(s, 2, 1.0), at(s, 2, 2.5));
+  path(track(PARTS, 0, Math.max(i, i0), v), C.WHITE, 3, 1, { alpha: o * showPath });
+  if (zf > 0) path(track(PARTS, i, n, v), C.WHITE, 2, 1, { alpha: o * zf * 0.35 });
   const sweep = (k, t0, t1, slow) => {
     const f = clamp((lt - t0) / (t1 - t0)); if (f <= 0 || f >= 1) return f >= 1 ? 1 : 0;
     const g = geo(k), u = lerp(-900, 900, f), fx = g.mx + g.dx * u, fy = g.my + g.dy * u;
@@ -176,28 +181,26 @@ function scans(lt, s) {
       write("Gaia's field of view sweeps this way", fx - g.dx * 100 + 40 * (g.ax > 0 ? 1 : -1), fy - g.dy * 100 - 30, 24, C.GOLD, 1, { alpha: o, align: g.ax > 0 ? "left" : "right" }); }
     return u >= 0 ? 1 : 0;
   };
-  // the shadow a crossing leaves: the measured point, its (true-size) error bar along the sweep, and a short line across it
-  const shadow = (k, a, L = 110) => { if (a <= 0) return; const g = geo(k);
-    line(g.mx - g.ax * L, g.my - g.ay * L, g.mx + g.ax * L, g.my + g.ay * L, C.GOLD, 1, 1, { alpha: o * a * 0.35 });
+  const shadow = (k, a, L = 110) => { if (a <= 0) return; const g = geo(k), Ls = L * (zf > 0 ? lerp(1, 0.45, zf) : 1);
+    line(g.mx - g.ax * Ls, g.my - g.ay * Ls, g.mx + g.ax * Ls, g.my + g.ay * Ls, C.GOLD, 1, 1, { alpha: o * a * 0.35 });
     line(g.mx - g.dx * g.e, g.my - g.dy * g.e, g.mx + g.dx * g.e, g.my + g.dy * g.e, C.GOLD, 3, 1, { alpha: o * a });
     dot(g.mx, g.my, 4, C.GOLD, o * a); };
-  // crossing 0: one slow, explained sweep during line 0
   const c0 = sweep(0, at(s, 0, 2.5), at(s, 0, 6.5), true); shadow(0, c0, 700);
-  if (c0) { const g = geo(0);
+  if (c0) { const g = geo(0), fade = 1 - ramp(lt, at(s, 1, 2.0), at(s, 1, 2.8));
     const tick = ramp(lt, at(s, 0, 6.6), at(s, 0, 7.4));
-    arrow(g.mx - g.dx * 300, g.my - g.dy * 300, g.mx, g.my, C.GOLD, 3, tick, o * (1 - ramp(lt, at(s, 1, 2.0), at(s, 1, 2.8))));
-    write("measured: position along the sweep", 180, 960, 28, C.GOLD, tick, { alpha: o * (1 - ramp(lt, at(s, 1, 2.0), at(s, 1, 2.8))) });
-    write("across the sweep: unknown  →  the star is somewhere on this line", 180, 1005, 28, C.GOLD, ramp(lt, at(s, 0, 8.2), at(s, 0, 9.0)), { alpha: o * (1 - ramp(lt, at(s, 1, 2.0), at(s, 1, 2.8))) });
+    arrow(g.mx - g.dx * 300, g.my - g.dy * 300, g.mx, g.my, C.GOLD, 3, tick, o * fade);
+    write("measured: position along the sweep", 180, 960, 28, C.GOLD, tick, { alpha: o * fade });
+    write("across the sweep: unknown  →  the star is somewhere on this line", 180, 1005, 28, C.GOLD, ramp(lt, at(s, 0, 8.2), at(s, 0, 9.0)), { alpha: o * fade });
   }
-  // the run: every later crossing flashes a quick sweep and leaves its shadow
   for (let k = 1; k < N; k++) { const t = tk(k); sweep(k, t - 0.16, t + 0.16, false); shadow(k, ramp(lt, t, t + 0.25)); }
-  const ps = pos(["star", "parallax"], i); starDot(ps[0], ps[1], o, 9);
+  const ps = pos(PARTS, i, v); starDot(ps[0], ps[1], o, 9);
   const yr = (F.t_day[i] / 365.25 + F.system.year0).toFixed(1);
   write(yr, 1700, 1000, 34, C.GREY, 1, { align: "right", alpha: o * ramp(lt, tRun0, tRun0 + 0.5) });
   write("one number per crossing", 180, 150, 34, C.GOLD, ramp(lt, at(s, 0, 2.0), at(s, 0, 3.0)), { alpha: o });
   write("62 crossings, 0.05 mas each", 180, 200, 30, C.GOLD, ramp(lt, at(s, 1, 4.0), at(s, 1, 5.0)), { alpha: o });
-  write("the fit: parallax + proper motion + orbit", 180, 290, 30, C.WHITE, ramp(lt, at(s, 2), at(s, 2, 1.2)), { alpha: o });
-  write("through all of them", 180, 335, 30, C.WHITE, ramp(lt, at(s, 2, 1.2), at(s, 2, 2.0)), { alpha: o });
+  write("on the true path: orbit + parallax + proper motion", 180, 245, 26, C.GREY, ramp(lt, at(s, 1, 0.5), at(s, 1, 1.5)), { alpha: o });
+  write("the fit: parallax + proper motion + orbit", 180, 320, 30, C.WHITE, ramp(lt, at(s, 2), at(s, 2, 1.2)), { alpha: o });
+  write("through all of them", 180, 365, 30, C.WHITE, ramp(lt, at(s, 2, 1.2), at(s, 2, 2.0)), { alpha: o });
   compass(v, o);
 }
 
