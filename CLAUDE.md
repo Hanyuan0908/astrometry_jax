@@ -67,7 +67,11 @@ Network access (astroquery to the Gaia archive) is only needed for sources not i
   parameterisation). scipy L-BFGS-B stalls in float32 on these curved ridges; do not reintroduce it.
 - `darkcomp/nuts.py` — numpyro NUTS on a reparameterised vector (log P, sqrt(e) cos/sin omega, cos i, ...)
   with the Jacobian added so priors stay flat in physical parameters; dense mass matrix; start at the MAP.
-- `darkcomp/mock.py` — mock sources reusing real scan patterns (not a gaiamock replacement).
+- `darkcomp/mock.py` — `physical_population` (a0 from masses, period, distance) and template-based mocks on real scan
+  patterns. `darkcomp/gaiamock_bridge.py` — preferred mock backend: calls gaiamock (installed at `$GAIAMOCK_DIR`,
+  default `~/software/gaiamock`, needs its 1 GB healpix_scans and compiled GSL solver) and wraps its output as
+  `EpochAstrometry`; gaiamock's own cascade and our pipeline agree on identical data. `scripts/detectability.py`
+  maps detection fraction over (M2, distance) with either backend.
 - `data/gaia_bh3/` (ESA, CDS J/A+A/686/L2) and `data/dr4_prerelease/` (ESA, 12 sources: 9 singles/QSOs
   + HD 114762, Gaia-4, Gaia BH3) are the real-data benchmarks.
 

@@ -72,3 +72,20 @@ def test_physical_population_a0_is_consistent():
     for i in range(5):
         m2 = fit.m2_from_a0(float(t["a0_mas"][i]), float(t["parallax"][i]), float(t["period"][i]), 0.9)
         assert abs(m2 / t["m_2"][i] - 1) < 1e-4
+
+
+@pytest.mark.skipif(not __import__("darkcomp.gaiamock_bridge", fromlist=["available"]).available(), reason="gaiamock not installed")
+def test_gaiamock_mock_is_recovered():
+    from darkcomp import gaiamock_bridge as GB
+    rng = np.random.default_rng(7)
+    truth = mock.physical_population(rng, 3, m_star=1.0, m_2=np.array([1.4, 3.0, 0.6]), dist_pc=np.array([300.0, 1000.0, 500.0]),
+                                     period=np.array([400.0, 900.0, 150.0]), e_max=0.5)
+    ra, dec = GB.random_sky(rng, 3)
+    eps = GB.simulate(rng, truth, ra, dec, GB.g_from_distance(4.5, truth["dist_pc"]), "dr4")
+    assert all(e.n > 50 for e in eps)
+    dd = batch.stack_epochs(eps)
+    out = batch.run_pipeline(dd, jnp.asarray(np.geomspace(20, 3000, 300)), chunk=256, source_chunk=3, refine_chunk=3, m_star=1.0)
+    assert np.all(np.asarray(out["significance"]) > 20)
+    assert np.allclose(np.asarray(out["period"]), truth["period"], rtol=0.02)
+    assert np.allclose(np.asarray(out["a0_mas"]), truth["a0_mas"], rtol=0.1)
+    assert np.allclose(np.asarray(out["m_2"]), truth["m_2"], rtol=0.15)

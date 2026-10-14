@@ -186,22 +186,62 @@ than a few hundred trial orbits at once.
 **Throughput.** On an A100 the pipeline runs at about 124 sources/s for batches of 1000 or more; on an
 L4 44 sources/s; on a laptop CPU 4 to 6 sources/s. Results are identical across devices and chunkings.
 
+## 6a. Mock epoch astrometry with gaiamock
+
+gaiamock (El-Badry et al. 2024, arXiv:2411.00088, https://github.com/kareemelbadry/gaiamock) is the
+community tool for simulating Gaia epoch astrometry and is the preferred mock backend. It predicts the
+scan times, angles and parallax factors at any sky position from the nominal scanning law, uses the
+G-dependent along-scan uncertainty, drops a random 10% of transits and adds extra noise for G < 13.
+`darkcomp.gaiamock_bridge` calls gaiamock's own `predict_astrometry_binary_in_terms_of_a0` and wraps
+the result as `EpochAstrometry`, so the pipeline sees exactly what gaiamock produces.
+
+One-time setup (about 1 GB on disk; keep it outside synced folders):
+
+```bash
+mkdir -p ~/software && cd ~/software
+git clone https://github.com/kareemelbadry/gaiamock.git && cd gaiamock
+# scanning-law files (286 MB zip, 984 MB unpacked): the Box link from the gaiamock README, or directly:
+curl -L -A "Mozilla/5.0" -o healpix_scans.zip "https://caltech.box.com/index.php?rm=box_download_shared_file&shared_name=4f7q6qdh0bku881bzvzxc4cm5u0902cf&file_id=f_1611600757604"
+unzip -q healpix_scans.zip && rm healpix_scans.zip          # -> healpix_scans/ with 49,152 FITS files
+conda install -c conda-forge gsl healpy                      # or brew install gsl; pip install healpy
+ENV=$(python -c "import sys; print(sys.prefix)")
+gcc -shared -fPIC -o kepler_solve_astrometry.so kepler_solve_astrometry.c -I$ENV/include -L$ENV/lib -lgsl -lgslcblas -lm -Wl,-rpath,$ENV/lib
+```
+
+Point `GAIAMOCK_DIR` at the directory if it is not `~/software/gaiamock`. Then:
+
+```python
+from darkcomp import mock, gaiamock_bridge as GB
+rng = np.random.default_rng(0)
+truth = mock.physical_population(rng, 100, m_star=1.0, m_2=1.4, dist_pc=1000.0)   # a0 from the physics
+ra, dec = GB.random_sky(rng, 100)
+g_mag = GB.g_from_distance(4.5, truth["dist_pc"])              # M_G = 4.5: solar-type primary
+eps = GB.simulate(rng, truth, ra, dec, g_mag, data_release="dr4")  # list of EpochAstrometry
+```
+
+gaiamock returns one measurement per field-of-view transit (8 CCDs averaged, error / sqrt(8)), 60 to
+150 transits per source for DR4. On four test systems gaiamock's own `fit_full_astrometric_cascade`
+and our pipeline return identical P, e, a0, parallax and inclination to the printed precision.
+
 ## 6b. Detectability versus companion mass and distance
 
 `mock.physical_population` builds mock systems from physical parameters (primary mass, dark-companion mass,
 period, distance); a0 then follows from Kepler's law and the parallax. `scripts/detectability.py` runs a
-grid of (M2, distance) cells through the batch pipeline on the real pre-release scan patterns:
+grid of (M2, distance) cells through the batch pipeline:
 
 ```bash
+# gaiamock backend (default when installed): random sky positions, G = M_G + 5 log10(d/10) with M_G = 4.5
 DARKCOMP_PRECISION=32 python scripts/detectability.py --m2 0.1 0.3 0.6 1 1.4 3 10 --dist 500 1000 2000 5000 10000 --n 20
-DARKCOMP_PRECISION=32 python scripts/detectability.py ... --noise-scale 5      # 5x the per-CCD errors, ~G 16-17 instead of G 6-13
+DARKCOMP_PRECISION=32 python scripts/detectability.py ... --g-mag 15             # fixed apparent magnitude instead
+# template backend: real pre-release scan patterns and errors, optionally scaled
+DARKCOMP_PRECISION=32 python scripts/detectability.py --backend templates ... --noise-scale 5
 ```
 
 It prints the detection fraction per cell (and the fraction with the period recovered to 5%), the median
 recovered M2, and writes `<out>.npz` and `<out>.png`. 700 sources take about 2.5 minutes on a laptop CPU
-and a few seconds on a GPU. Results for the two cases above are in `docs/figures/detectability_bright.*`
-and `docs/figures/detectability_noise5.*`. Options: `--m-star`, `--p-range`, `--e-max`, `--sig`
-(detection threshold), `--all-templates` (include the G~19-20 scan patterns with mas-level errors).
+and a few seconds on a GPU. Results are in `docs/figures/detectability_gaiamock.*` (gaiamock, solar-type primary),
+`detectability_bright.*` and `detectability_noise5.*` (templates). Options: `--m-star`, `--abs-mag`,
+`--p-range`, `--e-max`, `--sig` (detection threshold), `--data-release`, `--all-templates`.
 
 ## 7. Posterior for a candidate (NUTS)
 
