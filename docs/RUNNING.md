@@ -321,9 +321,19 @@ sqrt(e) cos/sin omega, cos i, log masses, ...) with the Jacobian included, so th
 physical parameters, plus the Gaussian prior on `m_star`. One chain takes about a minute on a CPU; it is
 slower on a GPU, because a single chain is latency-bound. Run candidates in parallel processes on CPU for now.
 
-## 8. GPU benchmark notebook (Google Colab)
+## 8. GPU benchmark notebooks (Google Colab)
 
-`notebooks/gpu_benchmark_colab.ipynb` clones the repository, builds mock sources on the DR4 pre-release
+Three notebooks, same setup cells (clone with the read-only token, float32, chunk sizes planned from the
+device memory), Runtime > Change runtime type > GPU, then Run all:
+
+- `gpu_benchmark_sobol_colab.ipynb`: the current default search (Sobol, 2,400 trial orbits): CPU vs GPU,
+  grid vs Sobol at equal N with the "global optimum reached" count, throughput scan to N = 8192.
+- `gpu_benchmark_rv_colab.ipynb`: the search with epoch RVs: cost of adding 15 RVs per source, recovery of
+  K, gamma and the (omega, Omega) branch, throughput scan, and Gaia BH3 with its 17 RVS epochs in one
+  linear solve.
+- `gpu_benchmark_colab.ipynb`: the original (9,600-point grid) benchmark, kept for the archived L4/A100 runs.
+
+All three run on a CPU too (a local dry run uses small N). `notebooks/gpu_benchmark_colab.ipynb` clones the repository, builds mock sources on the DR4 pre-release
 scan patterns, times the batch pipeline on CPU and GPU after JIT warm-up, scans the batch size up to
 4096, checks recovery against the mock truth, and times a NUTS fit of BH3. Runtime > Change runtime
 type > GPU (L4 or A100), then Runtime > Run all. The notebook runs in float32 (`PRECISION = 32` in the

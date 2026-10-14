@@ -202,7 +202,8 @@ Single-candidate NUTS (BH3, astrometry + RVs, 800 warm-up + 1000 samples): 67 s 
 ```
 darkcomp/         the package (see CLAUDE.md for a module-by-module description)
 scripts/          fit_source.py (DR3 paper fit), detectability.py (mass-distance grid, gaiamock or templates), precision_check.py
-notebooks/        gpu_benchmark_colab.ipynb and archived executed runs in notebooks/runs/
+notebooks/        GPU benchmarks (gpu_benchmark_sobol_colab: current search; gpu_benchmark_rv_colab: with RVs;
+                  gpu_benchmark_colab: original grid) and archived executed runs in notebooks/runs/
 tests/            pytest suite (20 tests)
 data/             El-Badry et al. 2024 RVs and SED masses, cached DR3 rows, Gaia BH3 epoch data (CDS),
                   Gaia DR4 pre-release epoch astrometry (ESA)
