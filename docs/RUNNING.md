@@ -253,10 +253,12 @@ python scripts/plot_tracks.py                                  # 1 Msun star at 
 python scripts/plot_tracks.py --dist 2000 --g-mag 17 --out docs/figures/astrometric_tracks_2kpc.png
 ```
 
-draws, for a single star and for dark companions of 0.6, 1.4, 3 and 10 Msun: the sky path of the
-photocentre over the DR4 span, the along-scan residuals after the single-star fit at gaiamock's scan
-times (step 1 of the pipeline), the periodogram (step 2) and the residuals after the orbital fit with
-the recovered a0, significance and M2 (step 3). `docs/figures/astrometric_tracks.png` and
+draws, for a single star and for dark companions of 0.6, 1.4, 3 and 10 Msun: the full sky path with
+proper motion and the proper motion recovered by the single-star fit (biased by an unmodelled orbit);
+the path with proper motion removed together with the measurements, each drawn as a bar along the scan
+direction since Gaia measures one coordinate per transit; the along-scan residuals after the single-star
+fit (step 1 of the pipeline); the periodogram (step 2); and the residuals after the orbital fit with the
+recovered proper motion, a0, significance and M2 (step 3). `docs/figures/astrometric_tracks.png` and
 `astrometric_tracks_2kpc.png` are the two cases above.
 
 ## 7. Posterior for a candidate (NUTS)
