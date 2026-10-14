@@ -22,9 +22,11 @@ give the same detections and parameters agreeing to ~1e-5 relative; tests run un
 (`DARKCOMP_PRECISION=32 $PY -m pytest -q`), with tolerances keyed on `tests.conftest.F32`. **The dev machine has no usable GPU and limited RAM**: never `vmap` more than a
 few hundred (n_obs, 9) design matrices at once (a 480k-point vmap once froze the machine); grid
 searches go through chunked `lax.map` (`epoch.profile_loglike_batch`, `batch.batch_period_search`).
-Benchmarks on a GPU run in Google Colab via `notebooks/gpu_benchmark_colab.ipynb` (executed runs are archived
-under `notebooks/runs/`; L4, float32: 44 sources/s at N=4096 with 350 sources x 256 trials per step, 26x the Colab CPU;
-A100-80GB: 124 sources/s from N=1024 with 1024-1260 sources per step). Do not `pip install -U jax` in Colab. GitHub:
+Benchmarks on a GPU run in Google Colab via `notebooks/gpu_benchmark_sobol_colab.ipynb` and
+`gpu_benchmark_rv_colab.ipynb` (executed runs are archived under `notebooks/runs/`, numbers in README.md
+"Benchmarks achieved"; A100-80GB, float32, Sobol 2,400: 213 sources/s at N=1024, 420-550 sources/s at N=8192 with
+1260 sources x 256 trials per step and ~2 s per-call overhead; CPU and GPU give the same detections and periods to
+<0.1%; the old 9,600-point grid ran at 124 sources/s on the A100 and 44 sources/s on an L4). Do not `pip install -U jax` in Colab. GitHub:
 `git@github.com:Hanyuan0908/astrometry_jax.git` (private).
 
 ## Environment and commands
@@ -62,7 +64,7 @@ Network access (astroquery to the Gaia archive) is only needed for sources not i
   keep `used_by_agis_al` and not `multipeak`, as ESA's gaia-supdate does). Time = ns since 2010.0 TCB + bary corr.
 - `darkcomp/batch.py` — stacked/padded multi-source pipeline: vmapped single-star fit, `lax.map`
   over sources of the chunked periodogram, vmapped LM refinement of the top-3 peaks, Campbell
-  elements, significance and companion mass; with RVs also gamma, K, K_pred, omega_rv (cost +30%).
+  elements, significance and companion mass; with RVs also gamma, K, K_pred, omega_rv (no measurable cost on a GPU, +6% on a CPU).
   Trial orbits are a scrambled Sobol sequence (`trial_orbits`, default 2,400 points in (log P, e, phase));
   it beat the 9,600-point regular grid on 128 mocks (127 vs 125 global optima) at a quarter of the cost.
   Do not go below ~1,200 points. This is the candidate filter; NUTS (`nuts.py`) is for

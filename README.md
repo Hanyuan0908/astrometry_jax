@@ -22,11 +22,13 @@ Working and validated:
 - DR3 joint astrometry + RV fits reproduce the published neutron-star candidate solutions.
 - Epoch RVs enter the batch search itself as three more linear parameters (gamma, K cos omega, K sin omega,
   Gaia's AstroSpectroSB1 form), so the periodogram, the refinement and the branch choice use astrometry and
-  RVs together at 30% extra cost; the physical link between K and the astrometric orbit is checked (K/K_pred)
+  RVs together at no measurable extra cost on a GPU (6% on a CPU); the physical link between K and the
+  astrometric orbit is checked (K/K_pred)
   and imposed in the NUTS follow-up.
 - Epoch-astrometry search reproduces Gaia BH3 and the DR4 pre-release orbits, and gives no false
   detections on the DR4 pre-release single stars and quasars.
-- Batched multi-source search runs on GPU at >100 sources per second (A100), with identical results to the CPU.
+- Batched multi-source search runs on GPU at 400 to 550 sources per second (A100-80GB, N = 8192), with the
+  same detections as the CPU and periods agreeing to better than 0.1%.
 - Trial orbits are a scrambled Sobol sequence in (log P, e, phase), 2,400 points by default: on 128 gaiamock
   sources it reaches the global optimum for 127 where the former 9,600-point regular grid reached 125, at a
   quarter of the cost (every quasi-random point samples a new period).
@@ -176,23 +178,58 @@ to better than 0.1% (the rest to 0.35%, all with P longer than the data span), a
 
 ## Benchmarks achieved
 
-Batched search, 9,600 trial orbits per source (300 periods x 4 eccentricities x 8 phases), top-3 peak
-refinement, float32, timed after JIT warm-up (median of repeated runs; executed notebooks are in `notebooks/runs/`).
+All timings are float32 after JIT warm-up (median of repeated runs); the executed notebooks are in
+`notebooks/runs/`. The per-step batch is planned from the device memory by `batch.plan_chunks`, so the
+same notebook adapts to any GPU.
+
+**Current search** (Sobol, 2,400 trial orbits per source, top-3 peak refinement; Colab A100-80GB, 2026-10-14,
+`gpu_benchmark_sobol_A100_float32_2026-10-14.ipynb` and `gpu_benchmark_rv_A100_float32_2026-10-14.ipynb`):
 
 | device | batch size N | sources x trials per step | time | throughput |
 |---|---|---|---|---|
-| Apple M5 Pro (CPU, float64) | 64 | 32 x 256 | 15.2 s | 4.2 sources/s |
-| Apple M5 Pro (CPU, float32) | 64 | 32 x 256 | 10.5 s | 6.1 sources/s |
-| Colab CPU | 128 | 32 x 256 | 75 s | 1.7 sources/s |
-| NVIDIA L4 (23 GB) | 128 | 128 x 256 | 5.2 s | 24.5 sources/s |
-| NVIDIA L4 | 4096 | 350 x 256 | 92.5 s | 44.3 sources/s |
-| NVIDIA A100-80GB | 128 | 128 x 256 | 3.7 s | 34.9 sources/s |
-| NVIDIA A100-80GB | 1024 | 1024 x 256 | 8.3 s | 123.7 sources/s |
-| NVIDIA A100-80GB | 4096 | 1260 x 256 | 33.1 s | 123.8 sources/s |
+| Colab CPU | 128 | 32 x 256 | 26.5 s | 4.8 sources/s |
+| NVIDIA A100-80GB | 128 | 128 x 256 | 3.4 s | 38 sources/s |
+| NVIDIA A100-80GB | 256 | 256 x 256 | 3.5 s | 74 sources/s |
+| NVIDIA A100-80GB | 1024 | 1024 x 256 | 4.8 s | 213 sources/s |
+| NVIDIA A100-80GB | 4096 | 1260 x 256 | 12.3 s | 332 sources/s |
+| NVIDIA A100-80GB | 8192 | 1260 x 256 | 19.4 s | 423 sources/s |
+| NVIDIA A100-80GB, 15 RVs per source | 4096 | 1260 x 256 | 9.9 s | 415 sources/s |
+| NVIDIA A100-80GB, 15 RVs per source | 8192 | 1260 x 256 | 14.9 s | 551 sources/s |
 
-The A100 is compute-bound from about 1000 sources per step; at 124 sources/s one A100 searches a million
-sources in about 2.2 hours. The per-step batch is planned from the device memory by `batch.plan_chunks`, so
-the same notebook adapts to any GPU.
+The local dry run of the same notebook on an Apple M5 Pro CPU gives about 10 sources/s.
+Each 1,260-source step costs 2.1 to 2.8 s on top of about 2 s of per-call overhead (single-star fit, peak
+finding, refinement), so the throughput keeps rising with N and levels off at 450 to 600 sources/s: a
+million sources in 30 to 40 minutes on one A100. The two sessions used identical step shapes (the 15 RV rows
+per source are negligible next to 824 abscissae), so the 551 versus 423 sources/s at N = 8192 is
+session-to-session variation of the Colab A100, not an RV effect; at N = 128 in the same session the RVs cost
+0.98x. GPU versus CPU: same detection set, 117 of 118 periods agree to better than 0.1% (before TF32 was
+disabled, one near-threshold source disagreed by a factor 19 to 40).
+
+**Trial design at equal N = 1024 on the A100** (same 1,024 mock sources; "global optimum" = refined chi2 within
+2 of the chi2 at the true parameters):
+
+| design | time | detections > 6 sigma | P within 5% | global optimum |
+|---|---|---|---|---|
+| regular grid 300 x 4 x 8 (9,600) | 8.93 s | 984 | 956 | 984 |
+| Sobol 4,800 | 6.35 s | 985 | 976 | 1023 |
+| Sobol 2,400 (default) | 4.80 s | 985 | 975 | 1013 |
+| Sobol 1,200 | 4.17 s | 983 | 971 | 991 |
+
+**Recovery on the A100** (128 mock orbits on the pre-release scan patterns, a0 from 0.01 to 20 mas;
+`docs/figures/gpu_sobol_recovery_A100.png`): 118 of 128 detected at 6 sigma, 116 of those with P within 5%
+of truth; every non-detection has a0 below 0.07 mas. With 15 RVs per source
+(`docs/figures/gpu_rv_recovery_A100.png`): the median Delta chi2 against the single-star fit rises from 3,172
+to 16,047, K is within 10% for 102 of 116 well-measured orbits, gamma within 1.5 km/s for 112, and the
+(omega, Omega) branch is right for 112 of 116 (57 without RVs: a coin flip). Gaia BH3 with its 17 RVS
+epochs in one linear solve, float32 on the GPU: P = 4252 d, e = 0.729, a0 = 27.38 mas, i = 110.6 deg,
+gamma = -357.31 km/s, K = 56.59 km/s against K_pred = 57.01 (ratio 0.993), chi2_rv/n = 0.91,
+M_BH = 33.4 Msun (paper 32.70 +- 0.82).
+
+**Previous search** (9,600-point regular grid, 2026-10-13, `gpu_benchmark_L4_float32_2026-10-13.ipynb`,
+`gpu_benchmark_A100_float32_2026-10-13.ipynb`): Colab CPU 1.7 sources/s; L4 (23 GB) 24.5 sources/s at
+N = 128 and 44.3 sources/s at N = 4096 (350 x 256 per step); A100-80GB 34.9, 123.7 and 123.8 sources/s at
+N = 128, 1024 and 4096. The Sobol default is 1.9x faster than the grid at equal N and the search itself
+runs about 3.4x faster than this baseline at N = 4096.
 
 Single-candidate NUTS (BH3, astrometry + RVs, 800 warm-up + 1000 samples): 67 s on CPU, 127 s on L4,
 162 s on A100. A single chain cannot use a GPU; see "Not yet done" above.

@@ -184,8 +184,12 @@ them with `plan_chunks` from the memory you are willing to use (0.6 x device mem
 laptop). A 480,000-point `vmap` once froze a 24 GB laptop; never call the unchunked functions on more
 than a few hundred trial orbits at once.
 
-**Throughput.** On an A100 the pipeline runs at about 124 sources/s for batches of 1000 or more; on an
-L4 44 sources/s; on a laptop CPU 4 to 6 sources/s. Results are identical across devices and chunkings.
+**Throughput.** With the default Sobol search an A100-80GB runs at 213 sources/s for N = 1024 and 420 to
+550 sources/s for N = 8192 (1,260 sources x 256 trials per step, about 2 s of per-call overhead); the Colab
+CPU 4.8 sources/s, a laptop CPU about 10 sources/s. The previous 9,600-point grid ran at 124 sources/s on
+the A100 and 44 sources/s on an L4. Adding epoch RVs costs nothing measurable on the GPU. Results are
+identical across devices and chunkings (same detections, periods to better than 0.1%). The numbers and the
+executed notebooks are in README.md, "Benchmarks achieved", and `notebooks/runs/`.
 
 ## 6a. Mock epoch astrometry with gaiamock
 
