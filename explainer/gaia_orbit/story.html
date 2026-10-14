@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explainer</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #000; height: 100%; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+  canvas { width: min(100vw, calc((100vh - 64px) * 16 / 9)); aspect-ratio: 16 / 9; display: block; }
+  #ui { display: flex; gap: 12px; align-items: center; width: min(100vw, calc((100vh - 64px) * 16 / 9));
+        font: 13px system-ui, sans-serif; color: #aaa; padding: 0 16px; box-sizing: border-box; }
+  #ui input { flex: 1; accent-color: #58c4dd; }
+  #ui button { background: #222; color: #eee; border: 1px solid #444; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+  body.export #ui { display: none; }
+  body.export canvas { width: 1920px; height: 1080px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<div id="ui"><button id="play">Play</button><input id="scrub" type="range" min="0" max="1000" value="0"><span id="time">0.0 s</span></div>
+<script src="kit.js"></script>
+<script src="scenes.js"></script>
+</body>
+</html>

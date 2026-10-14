@@ -1,0 +1,37 @@
+{
+  "voice": "en-US-AndrewNeural",
+  "rate": "+2%",
+  "lead": 0.6,
+  "gap": 0.6,
+  "tail": 1.4,
+  "scenes": [
+    { "id": "title", "lines": [
+      "A star with an unseen companion never sits still.",
+      "Here is what Gaia actually measures, built up one motion at a time."
+    ] },
+    { "id": "orbit", "lines": [
+      "Take a Sun-like star with a one point four solar mass companion that emits no light, six hundred days around each other, five hundred parsecs away.",
+      "Both bodies circle their common centre of mass. Seen from a point moving along with the system, the star traces this ellipse.",
+      "Its size on the sky is called a zero: two point two milliarcseconds here. A zero grows with the companion's mass, which is what makes the companion weighable."
+    ], "pad": 1.0 },
+    { "id": "parallax", "lines": [
+      "But Gaia is not at rest. It rides with the Earth around the Sun, one and a half million kilometres beyond it.",
+      "So every star appears to loop once a year: the parallax ellipse, whose size is the parallax, two milliarcseconds at five hundred parsecs.",
+      "Add the two motions, and the path on the sky becomes this rosette: a yearly loop that never repeats, because the orbit takes six hundred days."
+    ], "pad": 1.0 },
+    { "id": "pm", "lines": [
+      "And the whole system drifts through space. That is the proper motion.",
+      "Over Gaia's five years the drift carries the star about fifty milliarcseconds, twenty times the size of the orbit.",
+      "The orbit is now a small wiggle on a nearly straight line. This is the true path of the star on the sky."
+    ], "pad": 1.0 },
+    { "id": "scans", "lines": [
+      "Gaia does not even see this path. Each time the star crosses its field of view, it measures one number: the position along the scan direction.",
+      "Sixty-two crossings in five years, each good to five hundredths of a milliarcsecond, each in a different direction.",
+      "The fit must find the one combination of parallax, proper motion and orbit that passes through all of them."
+    ], "pad": 1.0 },
+    { "id": "end", "lines": [
+      "Do that, and the orbit's size and period together with the parallax give the companion's mass: one point four solar masses, with no light from it at all.",
+      "That is how a dark companion is weighed."
+    ], "pad": 1.5 }
+  ]
+}

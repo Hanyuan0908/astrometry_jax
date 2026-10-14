@@ -3,3 +3,16 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 astrometry_jax-main.zip
+# explainer video: generated media and renders (sources: build_facts.py, script.json, scenes.js, story.html, kit.js)
+explainer/*/voice/
+explainer/*/stills/
+explainer/*/*.wav
+explainer/*/*.mp3
+explainer/*/*.mp4
+explainer/*/facts.json
+explainer/*/timing.json
+explainer/*/events.json
+explainer/*/voice_timeline.json
+explainer/*/render.log
+explainer/*/x264pass*
+.DS_Store

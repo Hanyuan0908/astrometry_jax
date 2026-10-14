@@ -261,6 +261,14 @@ fit (step 1 of the pipeline); the periodogram (step 2); and the residuals after 
 recovered proper motion, a0, significance and M2 (step 3). `docs/figures/astrometric_tracks.png` and
 `astrometric_tracks_2kpc.png` are the two cases above.
 
+## 6d. Explainer video
+
+`explainer/gaia_orbit/` is a 2-minute narrated animation (3Blue1Brown style) of orbit + parallax + proper
+motion = the path Gaia samples, built with the `explainer-video` skill. Its numbers come from
+`build_facts.py` (darkcomp model + gaiamock scan epochs, every value asserted). To rebuild: run
+`build_facts.py`, `narration.py` (edge-tts), `export.js video`, `music_piano.py`, `sfx.py`, `mix.py` from the
+skill's `scripts/`; the rendered `gaia_dark_companion.mp4` is not tracked in git.
+
 ## 7. Posterior for a candidate (NUTS)
 
 After the batch search, sample the full 14-parameter posterior of an interesting source, with or
