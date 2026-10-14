@@ -156,7 +156,7 @@ to better than 0.1% (the rest to 0.35%, all with P longer than the data span), a
 
 ## Benchmarks achieved
 
-Batched search, 12,000 trial orbits per source (300 periods x 5 eccentricities x 8 phases), top-3 peak
+Batched search, 9,600 trial orbits per source (300 periods x 4 eccentricities x 8 phases), top-3 peak
 refinement, float32, timed after JIT warm-up (median of repeated runs; executed notebooks are in `notebooks/runs/`).
 
 | device | batch size N | sources x trials per step | time | throughput |
