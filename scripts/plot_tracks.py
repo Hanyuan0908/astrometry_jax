@@ -77,6 +77,14 @@ for j, m2 in enumerate(args.m2):
     ora_s, odec_s = B * Xs + G * Ys, A * Xs + F * Ys
     w_model = (p["pmra"] * ts / 365.25 + ora_s) * np.sin(psi_s) + (p["pmdec"] * ts / 365.25 + odec_s) * np.cos(psi_s) + plx * ep.plx_factor[keep]
     resid = w_obs - w_model
+    # the orbital fit (steps 2 and 3 of the pipeline), needed here to overlay the fitted track
+    ll, be, bp = E.period_search(d, periods); ll = np.asarray(ll); k = int(np.argmax(ll))
+    dchi2 = 2 * (ll - (-0.5 * float(chi2)))
+    r = E.refine_profile(d, periods[k], float(be[k]), float(bp[k])); lf = r["linear"]
+    M = E.orbital_design(d, r["period"], r["ecc"], r["phase"]); beta9, chi2o, _ = E.weighted_lstsq(M, d)
+    Xf, Yf = (np.asarray(x) for x in E.keplerian_xy(jnp.asarray(t_dense), r["period"], r["ecc"], r["phase"]))
+    fra, fdec = lf["B"] * Xf + lf["G"] * Yf, lf["A"] * Xf + lf["F"] * Yf          # fitted orbit
+    sra, sdec = lf["d_ra_mas"] + (lf["parallax"] / plx) * pra, lf["d_dec_mas"] + (lf["parallax"] / plx) * pdec   # fitted offsets + parallax
     # row 1: full path with proper motion
     a = ax[0, j]
     a.plot(p["pmra"] * t_yr + pra + ora, p["pmdec"] * t_yr + pdec + odec, "-", lw=0.6, c="C0")
@@ -90,12 +98,14 @@ for j, m2 in enumerate(args.m2):
     # row 2: proper motion removed, with the 1-D measurements
     a = ax[1, j]
     a.plot(pra + ora, pdec + odec, "-", lw=0.7, c="C0", label="photocentre path")
-    a.plot(ora, odec, "-", lw=0.9, c="C3", alpha=0.8, label="orbit only")
+    a.plot(ora, odec, "-", lw=0.9, c="C3", alpha=0.8, label="true orbit")
+    a.plot(sra + fra, sdec + fdec, "--", lw=0.7, c="k", alpha=0.7, label="fitted path (orbit fit)")
+    a.plot(lf["d_ra_mas"] + fra, lf["d_dec_mas"] + fdec, "--", lw=0.9, c="C2", label="fitted orbit")
     xo, yo = pra_s + ora_s + resid * np.sin(psi_s), pdec_s + odec_s + resid * np.cos(psi_s)
     a.plot([xo - err_s * np.sin(psi_s), xo + err_s * np.sin(psi_s)], [yo - err_s * np.cos(psi_s), yo + err_s * np.cos(psi_s)], "-", c="0.3", lw=0.8)
     a.plot(xo, yo, ".", c="k", ms=3, label="along-scan measurements")
     a.plot(0, 0, "k+", ms=8); a.set_aspect("equal"); a.invert_xaxis()
-    a.set_title("proper motion removed", fontsize=9); a.set_xlabel("RA offset [mas]")
+    a.set_title(f"pm removed; plx fit {lf['parallax']:.3f} (true {plx:.2f})", fontsize=9); a.set_xlabel("RA offset [mas]")
     if j == 0:
         a.set_ylabel("Dec offset [mas]"); a.legend(fontsize=7, loc="upper left")
     # bottom: along-scan residuals after a single-star fit, at gaiamock scan times
@@ -108,17 +118,12 @@ for j, m2 in enumerate(args.m2):
     if j == 0:
         b.set_ylabel("along-scan residual [mas]")
     # periodogram (step 2) and orbital fit (step 3)
-    ll, be, bp = E.period_search(d, periods); ll = np.asarray(ll); k = int(np.argmax(ll))
-    dchi2 = 2 * (ll - (-0.5 * float(chi2)))
     cpg = ax[3, j]; cpg.semilogx(periods, dchi2, "-", lw=0.8, c="k")
     if m2 > 0:
         cpg.axvline(p["period"], c="C3", lw=0.8, ls="--")
     cpg.set_title(f"periodogram: peak at P = {periods[k]:.0f} d, dchi2 = {dchi2[k]:.0f}", fontsize=9); cpg.set_xlabel("trial period [d]")
     if j == 0:
         cpg.set_ylabel("chi2(single) - chi2(orbit)")
-    r = E.refine_profile(d, periods[k], float(be[k]), float(bp[k]))
-    M = E.orbital_design(d, r["period"], r["ecc"], r["phase"])
-    beta9, chi2o, _ = E.weighted_lstsq(M, d)
     res_o = np.asarray(d["w"] - M @ beta9)[ep.mask > 0]
     cf = ax[4, j]; cf.errorbar(ep.t_day[ep.mask > 0] / 365.25 + 2017.5, res_o, yerr=ep.err[ep.mask > 0], fmt=".", ms=3, lw=0.6, c="k"); cf.axhline(0, c="0.6", lw=0.6)
     cf.set_title((f"orbit fit: P = {r['period']:.0f} d, a0 = {r['a0_mas']:.2f} mas, " if m2 > 0 else f"orbit fit (noise): a0 = {r['a0_mas']:.2f} mas, ") + f"chi2/N = {float(chi2o)/ep.n:.2f}\npm {r['linear']['pmra']:.2f}, {r['linear']['pmdec']:.2f}; significance {r['significance']:.1f} sigma, M2 = {float(m2_from_mass_function(mass_function_astrometric(r['a0_mas'], r['linear']['parallax'], r['period']), args.m_star)):.2f} Msun", fontsize=7)
