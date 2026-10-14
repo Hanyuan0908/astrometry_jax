@@ -222,6 +222,9 @@ eps = GB.simulate(rng, truth, ra, dec, g_mag, data_release="dr4")  # list of Epo
 gaiamock returns one measurement per field-of-view transit (8 CCDs averaged, error / sqrt(8)), 60 to
 150 transits per source for DR4. On four test systems gaiamock's own `fit_full_astrometric_cascade`
 and our pipeline return identical P, e, a0, parallax and inclination to the printed precision.
+`python scripts/benchmark_gaiamock.py` compares gaiamock with the real DR4 pre-release data (transit
+counts and times, scan angles, parallax factors, error model, single-star chi2, and a BH3 injection and
+recovery); the outcome is summarised in the README.
 
 ## 6b. Detectability versus companion mass and distance
 

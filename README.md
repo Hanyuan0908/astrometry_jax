@@ -92,6 +92,21 @@ simulator: nominal scanning law at any sky position, G-dependent along-scan erro
 and our pipeline return the same P, e, a0, parallax and inclination to the printed precision (4 test
 systems, P 150 to 1500 d, G 12 to 16), and `tests/test_batch.py` recovers P to 2%, a0 to 10% and M2 to 15%.
 
+**gaiamock against the real DR4 pre-release data** (`scripts/benchmark_gaiamock.py`, 12 sources, G 7 to 20):
+gaiamock predicts the same number of DR4 transits as observed to within 0 to 25% (e.g. 63 vs 63 for BH3,
+64 vs 63 for HD 114762) and 90 to 100% of the real transits fall within 12 h of a predicted one (the
+0.9 deg healpix cell can be swept one revolution or one field of view earlier or later, so only 35 to
+90% coincide to the minute). Scan angles agree to 0.1 to 0.7 deg rms and parallax factors to 0.003.
+Its per-CCD error model is within 5 to 10% of the reported errors for G 14 to 20 and 50% larger than
+the reported errors at G 7 to 12, but the reported bright-star errors underestimate the actual scatter:
+the real BH3 fit has chi2/dof 3.05, i.e. an effective per-CCD error of 0.149 mas against gaiamock's
+0.133. Single-star chi2/N is 0.95 to 1.08 on the real nulls and 0.91 to 1.05 on gaiamock realisations.
+Injecting the fitted BH3 orbit into 20 gaiamock realisations at BH3's position and magnitude returns
+P 4242 +- 180 d, e 0.730 +- 0.009, a0 27.4 +- 0.9 mas, i 110.5 +- 0.2 deg, parallax +- 0.016 mas and
+significance 1020 +- 43, against the real data's a0 27.11 mas, i 110.5 deg, parallax +- 0.011 mas and
+significance 1099 once its excess noise is included. gaiamock is therefore a faithful, slightly
+conservative, stand-in for DR4 epoch astrometry.
+
 **Recovery on 128 gaiamock systems** (M2 log-uniform 0.2 to 10 Msun, distance 200 pc to 3 kpc, solar-type
 primary so G 11 to 17, P 30 to 1500 d, e up to 0.6, random sky): 112 of 128 detected at 6 sigma, 110 of
 those with the period within 5%; the non-detections have a0 of 0.08 mas median, 0.21 mas at most. Over the
