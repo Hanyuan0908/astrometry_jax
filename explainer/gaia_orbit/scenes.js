@@ -50,33 +50,28 @@ function title(lt, s) {
   write("orbit  +  parallax  +  proper motion  =  the path Gaia samples", W / 2, 960, 34, C.GREY, ramp(lt, at(s, 1, 0.6), at(s, 1, 2.4)), { align: "center", alpha: o });
 }
 
-// ---------- 2 · the orbit, seen from a frame moving with the system
+// ---------- 2 · the orbit, seen from a frame moving with the system (the bodies keep moving for the whole scene)
 function orbit(lt, s) {
   const o = outro(lt, s), v = sky, iP = P_IDX();
-  const q = F.system.q;
-  const t0 = at(s, 1, 0.8), tP = at(s, 2, 0.5);                    // one period of motion between these times
-  const f = clamp((lt - t0) / (tP - t0)); const i = Math.round(f * iP);
-  // centre of mass and labels
+  const t0 = at(s, 0, 0.6), TP = 9.0;                                 // seconds per orbit on screen
+  const f = Math.max(0, (lt - t0) / TP), i = Math.round((f % 1) * iP), traced = Math.min(f, 1);
   const a0 = ramp(lt, at(s, 0), at(s, 0, 0.8));
   line(v.cx - 14, v.cy, v.cx + 14, v.cy, C.WHITE, 2, 1, { alpha: a0 * o }); line(v.cx, v.cy - 14, v.cx, v.cy + 14, C.WHITE, 2, 1, { alpha: a0 * o });
   write("centre of mass", v.cx + 24, v.cy + 44, 26, C.GREY, ramp(lt, at(s, 1), at(s, 1, 0.8)), { alpha: o });
-  write("1 M⊙ star", 180, 150, 34, C.YELLOW, ramp(lt, at(s, 0, 0.3), at(s, 0, 1.3)), { alpha: o });
-  write("+ 1.4 M⊙ dark companion", 180, 200, 34, C.GREY, ramp(lt, at(s, 0, 1.6), at(s, 0, 2.6)), { alpha: o });
-  write("P = 600 d,  d = 500 pc", 180, 250, 34, C.WHITE, ramp(lt, at(s, 0, 3.2), at(s, 0, 4.2)), { alpha: o });
-  write("observer at rest with the system", 180, 310, 28, C.GREY, ramp(lt, at(s, 1), at(s, 1, 1.0)), { alpha: o });
-  // the two orbits are traced as the bodies move
+  write("1 M⊙ star", 180, 150, 34, C.YELLOW, ramp(lt, at(s, 0, 2.6), at(s, 0, 3.6)), { alpha: o });
+  write("+ 1.4 M⊙ dark companion", 180, 200, 34, C.GREY, ramp(lt, at(s, 0, 4.4), at(s, 0, 5.4)), { alpha: o });
+  write("P = 600 d,  d = 500 pc", 180, 250, 34, C.WHITE, ramp(lt, at(s, 0, 7.0), at(s, 0, 8.0)), { alpha: o });
+  write("observer at rest with the system", 180, 310, 28, C.GREY, ramp(lt, at(s, 1, 2.6), at(s, 1, 3.6)), { alpha: o });
   if (f > 0) {
-    path(track(["star"], 0, i), C.BLUE, 4, 1, { alpha: o });
-    path(track(["companion"], 0, i), C.GREY, 2, 1, { alpha: 0.7 * o, dash: [8, 8] });
+    path(track(["star"], 0, Math.round(traced * iP)), C.BLUE, 4, 1, { alpha: o });
+    path(track(["companion"], 0, Math.round(traced * iP)), C.GREY, 2, 1, { alpha: 0.7 * o, dash: [8, 8] });
   }
-  if (f >= 1) { path(track(["star"], 0, iP), C.BLUE, 4, 1, { alpha: o }); }
   const ps = pos(["star"], i), pc = pos(["companion"], i);
   line(pc[0], pc[1], ps[0], ps[1], C.GREY, 1.5, 1, { alpha: 0.5 * ramp(lt, at(s, 1), at(s, 1, 0.8)) * o });
-  starDot(ps[0], ps[1], ramp(lt, at(s, 0), at(s, 0, 0.6)) * o); compDot(pc[0], pc[1], ramp(lt, at(s, 0, 1.6), at(s, 0, 2.2)) * o);
-  // a0: the semi-major axis of the star's ellipse (the photocentre orbit)
+  starDot(ps[0], ps[1], ramp(lt, at(s, 0), at(s, 0, 0.6)) * o); compDot(pc[0], pc[1], ramp(lt, at(s, 0, 1.2), at(s, 0, 1.8)) * o);
+  // a0: the semi-major axis of the star's ellipse
   const pa = ramp(lt, at(s, 2), at(s, 2, 1.0));
   if (pa > 0) {
-    // the ellipse's major axis: use the two points farthest apart on the traced ellipse
     const pts = track(["star"], 0, iP); let best = [0, 0, 0];
     for (let a = 0; a < pts.length; a += 8) for (let b = a; b < pts.length; b += 8) { const d = Math.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1]); if (d > best[0]) best = [d, a, b]; }
     const [, ia, ib] = best, mx = (pts[ia][0] + pts[ib][0]) / 2, my = (pts[ia][1] + pts[ib][1]) / 2;
@@ -105,15 +100,16 @@ function parallax(lt, s) {
   const iA = Math.round(clamp((lt - tA) / (tB - tA)) * 2 * iY), iB = Math.round(clamp((lt - tB) / (tEnd - tB)) * n);
   const i = phaseA ? iA : iB;
   inset(i, ramp(lt, at(s, 0), at(s, 0, 1.2)) * o);
-  write("Gaia orbits the Sun with the Earth", 110, 520, 26, C.GREY, ramp(lt, at(s, 0, 2.0), at(s, 0, 3.0)), { alpha: o });
+  write("Gaia orbits the Sun with the Earth", 110, 520, 26, C.GREY, ramp(lt, at(s, 0, 6.0), at(s, 0, 7.0)), { alpha: o });
   line(v.cx - 14, v.cy, v.cx + 14, v.cy, C.WHITE, 2, 1, { alpha: o }); line(v.cx, v.cy - 14, v.cx, v.cy + 14, C.WHITE, 2, 1, { alpha: o });
   // the single star: traces the red parallax ellipse as the Earth goes round
   const redA = phaseA ? 1 : 0.45;
   path(track(["parallax"], 0, Math.min(iA, iY)), C.RED, 4, 1, { alpha: o * redA });
   if (phaseA) { const ps = pos(["parallax"], iA); starDot(ps[0], ps[1], ramp(lt, at(s, 0), at(s, 0, 0.6)) * o);
     write("a single star, no companion", 1250, 230, 30, C.WHITE, ramp(lt, at(s, 1), at(s, 1, 1.0)), { alpha: o }); }
-  write("parallax ellipse, ϖ = 2 mas", 1250, 290, 30, C.RED, ramp(lt, at(s, 1, 3.5), at(s, 1, 4.5)), { alpha: o });
-  write("same loop every year", 1250, 335, 26, C.GREY, ramp(lt, at(s, 1, 5.5), at(s, 1, 6.5)), { alpha: o * (phaseA ? 1 : 0.5) });
+  write("not how it looks on the sky: Gaia moves", 1250, 230, 30, C.GREY, ramp(lt, at(s, 0, 0.5), at(s, 0, 1.5)), { alpha: o * (1 - ramp(lt, at(s, 1), at(s, 1, 0.6))) });
+  write("parallax ellipse, ϖ = 2 mas", 1250, 290, 30, C.RED, ramp(lt, at(s, 1, 6.5), at(s, 1, 7.5)), { alpha: o });
+  write("same loop every year", 1250, 335, 26, C.GREY, ramp(lt, at(s, 1, 9.0), at(s, 1, 10.0)), { alpha: o * (phaseA ? 1 : 0.5) });
   // phase B: the orbit comes back and the star follows orbit + parallax
   if (!phaseA) {
     const pb = ramp(lt, tB, tB + 1.0);
@@ -137,12 +133,13 @@ function pm(lt, s) {
   const ros = 1 - 0.7 * ramp(lt, at(s, 1), at(s, 1, 2.0));
   path(track(["star", "parallax"], 0, n, v), C.GREY, 2, 1, { alpha: o * ros * 0.8 });
   // proper-motion arrow (green) on line 0
-  const pa = ramp(lt, at(s, 0, 0.5), at(s, 0, 2.0));
+  const pa = ramp(lt, at(s, 0, 5.0), at(s, 0, 6.5));
   const ux = -F.system.pm_mas_yr[0], uy = -F.system.pm_mas_yr[1], L = Math.hypot(ux, uy);
   const al = lerp(260, 0.5 * F.system.pm_total_mas * v.scale, zoomF);
   arrow(v.cx, v.cy, v.cx + ux / L * al * 0.0 + ux / L * al, v.cy + uy / L * al, C.GREEN, 4, pa, o);
+  write("the star moves through the Galaxy", 180, 110, 28, C.GREY, ramp(lt, at(s, 0), at(s, 0, 1.0)), { alpha: o });
   write("proper motion", 180, 150, 34, C.GREEN, pa, { alpha: o });
-  write("8, −5 mas per year", 180, 200, 30, C.GREEN, ramp(lt, at(s, 0, 2.2), at(s, 0, 3.0)), { alpha: o });
+  write("8, −5 mas per year", 180, 200, 30, C.GREEN, ramp(lt, at(s, 0, 6.8), at(s, 0, 7.6)), { alpha: o });
   // the true path: orbit + parallax + proper motion, traced over the span
   const f = clamp((lt - at(s, 1)) / (at(s, 2, 1.0) - at(s, 1))); const i = Math.round(f * n);
   if (f > 0) { path(track(["star", "parallax", "pm"], 0, i, v), C.WHITE, 3, 1, { alpha: o }); const ps = pos(["star", "parallax", "pm"], i, v); starDot(ps[0], ps[1], o, 9); }

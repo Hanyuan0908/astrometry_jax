@@ -15,17 +15,17 @@
     {
       "id": "orbit",
       "lines": [
-        "Take a Sun-like star with a one point four solar mass companion that emits no light, six hundred days around each other, five hundred parsecs away.",
-        "Both bodies circle their common centre of mass. Seen from a point moving along with the system, the star traces this ellipse.",
-        "Its size on the sky is called a zero: two point two milliarcseconds here. A zero grows with the companion's mass, which is what makes the companion weighable."
+        "This is the orbit of a classical binary pair: a Sun-like star and a one point four solar mass companion that emits no light, six hundred days around each other, five hundred parsecs away.",
+        "Both circle their common centre of mass. From a point moving along with the system, the star traces this ellipse.",
+        "Its size on the sky is called a zero: two point two milliarcseconds here. It grows with the companion's mass, and that is what makes the companion weighable."
       ],
       "pad": 0.3
     },
     {
       "id": "parallax",
       "lines": [
-        "But Gaia is not at rest. It rides with the Earth around the Sun, one and a half million kilometres beyond it.",
-        "Watch a single star with no companion. As Gaia circles the Sun, the star appears to circle too, once a year: the parallax ellipse, two milliarcseconds wide at five hundred parsecs.",
+        "But this is not how they look on the sky, because the Earth, and Gaia with it, are not stationary in space. Gaia rides with the Earth around the Sun.",
+        "Even a single star with no companion looks like this in Gaia's eyes: as Gaia circles the Sun, the star appears to circle too, once a year. That is the parallax ellipse, two milliarcseconds wide at five hundred parsecs.",
         "Now give the star its companion. Orbit and parallax add, and the path becomes this rosette: a yearly loop that never repeats, because the orbit takes six hundred days."
       ],
       "pad": 0.3
@@ -33,7 +33,7 @@
     {
       "id": "pm",
       "lines": [
-        "And the whole system drifts through space. That is the proper motion.",
+        "Stars also move through the Milky Way, on orbits different from the Sun's. Seen from here, that adds a steady drift: the proper motion.",
         "Over Gaia's five years the drift carries the star about fifty milliarcseconds, twenty times the size of the orbit.",
         "The orbit is now a small wiggle on a nearly straight line. This is the true path of the star on the sky."
       ],
