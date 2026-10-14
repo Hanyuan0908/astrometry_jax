@@ -155,44 +155,50 @@ function pm(lt, s) {
   compass(v, o);
 }
 
-// ---------- 5 · what Gaia measures: its field of view sweeps across the sky; one coordinate per crossing
+// ---------- 5 · what Gaia measures: the star moves along its path; each crossing of Gaia's field of view leaves a shadow
 function scans(lt, s) {
   const o = outro(lt, s), v = sky, n = F.t_day.length - 1, S = F.scans, N = S.t_day.length;
   line(v.cx - 14, v.cy, v.cx + 14, v.cy, C.WHITE, 2, 1, { alpha: o }); line(v.cx, v.cy - 14, v.cx, v.cy + 14, C.WHITE, 2, 1, { alpha: o });
-  const showPath = 1 - 0.75 * ramp(lt, at(s, 0, 1.0), at(s, 0, 2.0)) + 0.75 * ramp(lt, at(s, 2, 1.0), at(s, 2, 2.5));
-  path(track(["star", "parallax"], 0, n), C.WHITE, 3, 1, { alpha: o * showPath });
-  // geometry of crossing k: star position on screen, along-scan direction (dx, dy), across-scan direction (ax, ay)
+  // geometry of crossing k: star position, along-scan direction (dx, dy) and across-scan direction (ax, ay) on screen
   const geo = k => { const i = idxAt(S.t_day[k]); const [x, y] = pos(["star", "parallax"], i); const sp = Math.sin(S.psi[k]), cp = Math.cos(S.psi[k]);
-    return { x, y, mx: x - S.resid[k] * sp * v.scale, my: y - S.resid[k] * cp * v.scale, dx: -sp, dy: -cp, ax: cp, ay: -sp }; };
+    return { x, y, mx: x - S.resid[k] * sp * v.scale, my: y - S.resid[k] * cp * v.scale, dx: -sp, dy: -cp, ax: cp, ay: -sp, e: S.err[k] * v.scale }; };
+  // the star runs along the path during lines 1-2; before that it waits at the first crossing
+  const i0 = idxAt(S.t_day[0]), tRun0 = at(s, 1), tRun1 = at(s, 2, 1.0);
+  const fr = clamp((lt - tRun0) / (tRun1 - tRun0)), i = Math.round(i0 + fr * (n - i0));
+  const tk = k => tRun0 + (idxAt(S.t_day[k]) - i0) / (n - i0) * (tRun1 - tRun0);          // when crossing k happens on screen
+  const showPath = 0.25 + 0.75 * ramp(lt, at(s, 2, 1.0), at(s, 2, 2.5));
+  path(track(["star", "parallax"], 0, n), C.WHITE, 3, 1, { alpha: o * showPath * (1 - 0.75 * ramp(lt, at(s, 0, 1.0), at(s, 0, 2.0))) });
   // a sweep: Gaia's field of view (a band perpendicular to the scan direction) moves along it and crosses the star
   const sweep = (k, t0, t1, slow) => {
-    const f = clamp((lt - t0) / (t1 - t0)); if (f <= 0) return 0;
-    const g = geo(k), u = lerp(-1000, 1000, f), fx = g.mx + g.dx * u, fy = g.my + g.dy * u;
-    if (f < 1) {
-      ctx.save(); ctx.globalAlpha = o * 0.22; ctx.strokeStyle = C.GOLD; ctx.lineWidth = 70;
-      ctx.beginPath(); ctx.moveTo(fx - g.ax * 1400, fy - g.ay * 1400); ctx.lineTo(fx + g.ax * 1400, fy + g.ay * 1400); ctx.stroke(); ctx.restore();
-      line(fx - g.ax * 1400, fy - g.ay * 1400, fx + g.ax * 1400, fy + g.ay * 1400, C.GOLD, 2, 1, { alpha: o * 0.8 });
-      if (slow) { arrow(fx - g.dx * 160, fy - g.dy * 160, fx - g.dx * 40, fy - g.dy * 40, C.GOLD, 3, 1, o); write("Gaia's field of view sweeps this way", fx - g.dx * 100 + 40 * (g.ax > 0 ? 1 : -1), fy - g.dy * 100 - 30, 24, C.GOLD, 1, { alpha: o, align: g.ax > 0 ? "left" : "right" }); }
-    }
-    return u >= 0 ? 1 : 0;                                   // the crossing has happened
+    const f = clamp((lt - t0) / (t1 - t0)); if (f <= 0 || f >= 1) return f >= 1 ? 1 : 0;
+    const g = geo(k), u = lerp(-900, 900, f), fx = g.mx + g.dx * u, fy = g.my + g.dy * u;
+    ctx.save(); ctx.globalAlpha = o * (slow ? 0.22 : 0.09); ctx.strokeStyle = C.GOLD; ctx.lineWidth = slow ? 70 : 36;
+    ctx.beginPath(); ctx.moveTo(fx - g.ax * 1400, fy - g.ay * 1400); ctx.lineTo(fx + g.ax * 1400, fy + g.ay * 1400); ctx.stroke(); ctx.restore();
+    line(fx - g.ax * 1400, fy - g.ay * 1400, fx + g.ax * 1400, fy + g.ay * 1400, C.GOLD, slow ? 2 : 1, 1, { alpha: o * (slow ? 0.8 : 0.35) });
+    if (slow) { arrow(fx - g.dx * 160, fy - g.dy * 160, fx - g.dx * 40, fy - g.dy * 40, C.GOLD, 3, 1, o);
+      write("Gaia's field of view sweeps this way", fx - g.dx * 100 + 40 * (g.ax > 0 ? 1 : -1), fy - g.dy * 100 - 30, 24, C.GOLD, 1, { alpha: o, align: g.ax > 0 ? "left" : "right" }); }
+    return u >= 0 ? 1 : 0;
   };
-  const mark = (k, a, long = false) => { if (a <= 0) return; const g = geo(k), L = long ? 800 : 220;
-    line(g.mx - g.ax * L, g.my - g.ay * L, g.mx + g.ax * L, g.my + g.ay * L, C.GOLD, long ? 2 : 1, 1, { alpha: o * a * (long ? 0.9 : 0.3) }); dot(g.mx, g.my, 5, C.GOLD, o * a); };
-  // crossing 0: one slow sweep while line 0 is spoken
-  const c0 = sweep(0, at(s, 0, 3.0), at(s, 0, 7.5), true); mark(0, c0, true);
+  // the shadow a crossing leaves: the measured point, its (true-size) error bar along the sweep, and a short line across it
+  const shadow = (k, a, L = 110) => { if (a <= 0) return; const g = geo(k);
+    line(g.mx - g.ax * L, g.my - g.ay * L, g.mx + g.ax * L, g.my + g.ay * L, C.GOLD, 1, 1, { alpha: o * a * 0.35 });
+    line(g.mx - g.dx * g.e, g.my - g.dy * g.e, g.mx + g.dx * g.e, g.my + g.dy * g.e, C.GOLD, 3, 1, { alpha: o * a });
+    dot(g.mx, g.my, 4, C.GOLD, o * a); };
+  // crossing 0: one slow, explained sweep during line 0
+  const c0 = sweep(0, at(s, 0, 2.5), at(s, 0, 6.5), true); shadow(0, c0, 700);
   if (c0) { const g = geo(0);
-    const tick = ramp(lt, at(s, 0, 7.6), at(s, 0, 8.4));           // the measured number: the star's coordinate along the sweep
-    arrow(g.mx - g.dx * 300, g.my - g.dy * 300, g.mx, g.my, C.GOLD, 3, tick, o);
-    write("measured: position along the sweep", 180, 960, 28, C.GOLD, tick, { alpha: o * (1 - ramp(lt, at(s, 1, 6.0), at(s, 1, 6.8))) });
-    write("across the sweep: unknown  →  the star is somewhere on this line", 180, 1005, 28, C.GOLD, ramp(lt, at(s, 1, 0.2), at(s, 1, 1.0)), { alpha: o * (1 - ramp(lt, at(s, 1, 6.0), at(s, 1, 6.8))) });
+    const tick = ramp(lt, at(s, 0, 6.6), at(s, 0, 7.4));
+    arrow(g.mx - g.dx * 300, g.my - g.dy * 300, g.mx, g.my, C.GOLD, 3, tick, o * (1 - ramp(lt, at(s, 1, 2.0), at(s, 1, 2.8))));
+    write("measured: position along the sweep", 180, 960, 28, C.GOLD, tick, { alpha: o * (1 - ramp(lt, at(s, 1, 2.0), at(s, 1, 2.8))) });
+    write("across the sweep: unknown  →  the star is somewhere on this line", 180, 1005, 28, C.GOLD, ramp(lt, at(s, 0, 8.2), at(s, 0, 9.0)), { alpha: o * (1 - ramp(lt, at(s, 1, 2.0), at(s, 1, 2.8))) });
   }
-  // crossings 1-3: quick sweeps; the rest pop in
-  let shown = 1;
-  for (let k = 1; k <= 3; k++) { const t0 = at(s, 1, 3.0 + (k - 1) * 1.1); const ck = sweep(k, t0, t0 + 0.9, false); mark(k, ck); shown += ck; }
-  const k0 = at(s, 1, 6.4), k1 = at(s, 2, 1.0);
-  for (let k = 4; k < N; k++) { const tk = k0 + (k - 4) / (N - 5) * (k1 - k0); mark(k, ramp(lt, tk, tk + 0.4)); }
+  // the run: every later crossing flashes a quick sweep and leaves its shadow
+  for (let k = 1; k < N; k++) { const t = tk(k); sweep(k, t - 0.16, t + 0.16, false); shadow(k, ramp(lt, t, t + 0.25)); }
+  const ps = pos(["star", "parallax"], i); starDot(ps[0], ps[1], o, 9);
+  const yr = (F.t_day[i] / 365.25 + F.system.year0).toFixed(1);
+  write(yr, 1700, 1000, 34, C.GREY, 1, { align: "right", alpha: o * ramp(lt, tRun0, tRun0 + 0.5) });
   write("one number per crossing", 180, 150, 34, C.GOLD, ramp(lt, at(s, 0, 2.0), at(s, 0, 3.0)), { alpha: o });
-  write("62 crossings, 0.05 mas each", 180, 200, 30, C.GOLD, ramp(lt, at(s, 1, 6.6), at(s, 1, 7.6)), { alpha: o });
+  write("62 crossings, 0.05 mas each", 180, 200, 30, C.GOLD, ramp(lt, at(s, 1, 4.0), at(s, 1, 5.0)), { alpha: o });
   write("the fit: parallax + proper motion + orbit", 180, 290, 30, C.WHITE, ramp(lt, at(s, 2), at(s, 2, 1.2)), { alpha: o });
   write("through all of them", 180, 335, 30, C.WHITE, ramp(lt, at(s, 2, 1.2), at(s, 2, 2.0)), { alpha: o });
   compass(v, o);

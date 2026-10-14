@@ -1,9 +1,9 @@
 {
   "voice": "en-US-AndrewNeural",
-  "rate": "+2%",
-  "lead": 0.6,
-  "gap": 0.6,
-  "tail": 1.4,
+  "rate": "+4%",
+  "lead": 0.3,
+  "gap": 0.35,
+  "tail": 0.5,
   "scenes": [
     {
       "id": "title",
@@ -19,7 +19,7 @@
         "Both bodies circle their common centre of mass. Seen from a point moving along with the system, the star traces this ellipse.",
         "Its size on the sky is called a zero: two point two milliarcseconds here. A zero grows with the companion's mass, which is what makes the companion weighable."
       ],
-      "pad": 1.0
+      "pad": 0.3
     },
     {
       "id": "parallax",
@@ -28,7 +28,7 @@
         "Watch a single star with no companion. As Gaia circles the Sun, the star appears to circle too, once a year: the parallax ellipse, two milliarcseconds wide at five hundred parsecs.",
         "Now give the star its companion. Orbit and parallax add, and the path becomes this rosette: a yearly loop that never repeats, because the orbit takes six hundred days."
       ],
-      "pad": 1.0
+      "pad": 0.3
     },
     {
       "id": "pm",
@@ -37,7 +37,7 @@
         "Over Gaia's five years the drift carries the star about fifty milliarcseconds, twenty times the size of the orbit.",
         "The orbit is now a small wiggle on a nearly straight line. This is the true path of the star on the sky."
       ],
-      "pad": 1.0
+      "pad": 0.3
     },
     {
       "id": "scans",
@@ -46,7 +46,7 @@
         "Across the sweep it learns almost nothing. So one crossing only says: the star is somewhere on this line. Sixty-two crossings in five years, in ever different directions, each good to five hundredths of a milliarcsecond.",
         "The fit must find the one combination of parallax, proper motion and orbit that passes through all of them."
       ],
-      "pad": 1.0
+      "pad": 0.3
     },
     {
       "id": "end",
@@ -54,7 +54,7 @@
         "Do that, and the orbit's size and period together with the parallax give the companion's mass: one point four solar masses, with no light from it at all.",
         "That is how a dark companion is weighed."
       ],
-      "pad": 1.5
+      "pad": 0.8
     }
   ]
 }
