@@ -6,10 +6,39 @@ template sources -- e.g. the 12 DR4 pre-release sources -- and injects a synthet
 positions; gaiamock (El-Badry et al. 2024) should be used when the sky distribution matters.
 """
 import numpy as np
-import jax
-import jax.numpy as jnp
 
 from . import epoch as E, orbit
+from .constants import TWO_PI, AU_PER_DAY_TO_KM_S
+
+
+# numpy (not JAX) orbit kinematics: the generators loop over sources in Python, and one un-jitted JAX call
+# per source costs 15 ms on a laptop and far more on a GPU runtime (every op is dispatched to the device),
+# which made the mock generation for an 8,000-source benchmark take longer than the search itself.
+def _eccentric_anomaly(M, e, n_newton=20):
+    M = np.mod(np.asarray(M, float), TWO_PI)
+    Ea = M + 0.85 * e * np.sign(np.sin(M))                      # same starter as kepler.py
+    for _ in range(n_newton):
+        Ea = Ea - (Ea - e * np.sin(Ea) - M) / (1.0 - e * np.cos(Ea))
+    return Ea
+
+
+def keplerian_xy(t_day, period, ecc, phase):
+    """numpy twin of `epoch.keplerian_xy` (agrees to 1e-12)."""
+    Ea = _eccentric_anomaly(TWO_PI * np.asarray(t_day, float) / period - phase, ecc)
+    return np.cos(Ea) - ecc, np.sqrt(1.0 - ecc**2) * np.sin(Ea)
+
+
+def radial_velocity_kms(t_day, period, ecc, t_peri, omega, K, gamma):
+    """numpy twin of `orbit.radial_velocity_kms`."""
+    Ea = _eccentric_anomaly(TWO_PI * (np.asarray(t_day, float) - t_peri) / period, ecc)
+    f = 2.0 * np.arctan2(np.sqrt(1.0 + ecc) * np.sin(Ea / 2.0), np.sqrt(1.0 - ecc) * np.cos(Ea / 2.0))
+    return gamma + K * (np.cos(omega + f) + ecc * np.cos(omega))
+
+
+def thiele_innes_ABFG(a0, omega, Omega, inc):
+    cw, sw, cW, sW, ci = np.cos(omega), np.sin(omega), np.cos(Omega), np.sin(Omega), np.cos(inc)
+    return (a0 * (cw * cW - sw * sW * ci), a0 * (cw * sW + sw * cW * ci),
+            -a0 * (sw * cW + cw * sW * ci), -a0 * (sw * sW - cw * cW * ci))
 
 
 def random_population(rng, n, p_range=(30.0, 2500.0), a0_range=(0.05, 5.0), plx_range=(1.0, 10.0), e_max=0.8):
@@ -55,8 +84,8 @@ def simulate(rng, templates, truth, noise_scale=1.0):
         keep = tpl.mask > 0
         t = tpl.t_day[keep]; psi = tpl.psi[keep]; f = tpl.plx_factor[keep]; err = tpl.err[keep] * noise_scale
         p = {k: v[i] for k, v in truth.items()}
-        A, B, F, G = (float(x) for x in orbit.thiele_innes_ABFG(p["a0_mas"], p["omega"], p["Omega"], p["inc"]))
-        X, Y = (np.asarray(x) for x in E.keplerian_xy(jnp.asarray(t), p["period"], p["ecc"], 2 * np.pi * p["t_peri"] / p["period"]))
+        A, B, F, G = thiele_innes_ABFG(p["a0_mas"], p["omega"], p["Omega"], p["inc"])
+        X, Y = keplerian_xy(t, p["period"], p["ecc"], TWO_PI * p["t_peri"] / p["period"])
         t_yr = t / E.YEAR_DAY
         ra = p["d_ra_mas"] + p["pmra"] * t_yr + B * X + G * Y
         dec = p["d_dec_mas"] + p["pmdec"] * t_yr + A * X + F * Y
@@ -77,9 +106,9 @@ def add_rvs(rng, epochs, truth, n_rv=10, err_kms=1.0, gamma_sigma=30.0, m_star=N
         p = {k: float(v[i]) for k, v in truth.items()}
         t_all = np.unique(np.round(ep.t_day[ep.mask > 0], 3))
         t = np.sort(rng.choice(t_all, size=min(n_rv, len(t_all)), replace=False))
-        K = float(orbit.rv_semi_amplitude_kms(p["a0_mas"] / p["parallax"], p["period"], p["ecc"], p["inc"]))
+        K = TWO_PI * (p["a0_mas"] / p["parallax"]) * np.sin(p["inc"]) / (p["period"] * np.sqrt(1.0 - p["ecc"]**2)) * AU_PER_DAY_TO_KM_S
         gamma = float(rng.normal(0.0, gamma_sigma))
-        rv = np.asarray(orbit.radial_velocity_kms(jnp.asarray(t), p["period"], p["ecc"], p["t_peri"], p["omega"], K, gamma))
+        rv = radial_velocity_kms(t, p["period"], p["ecc"], p["t_peri"], p["omega"], K, gamma)
         rv = rv + rng.normal(0.0, err_kms, len(t))
         out.append(ep.with_rvs(t + ep.ref_jd, rv, np.full(len(t), err_kms)))
         Ks.append(K); gammas.append(gamma)
