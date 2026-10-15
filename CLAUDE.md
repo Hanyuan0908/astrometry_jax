@@ -76,7 +76,10 @@ Network access (astroquery to the Gaia archive) is only needed for sources not i
 - `darkcomp/nuts.py` — numpyro NUTS on a reparameterised vector (log P, sqrt(e) cos/sin omega, cos i, ...)
   with the Jacobian added so priors stay flat in physical parameters; dense mass matrix; start at the MAP.
 - `darkcomp/mock.py` — `physical_population` (a0 from masses, period, distance) and template-based mocks on real scan
-  patterns. `darkcomp/gaiamock_bridge.py` — preferred mock backend: calls gaiamock (installed at `$GAIAMOCK_DIR`,
+  patterns (numpy kinematics: the generators loop over sources, and per-source JAX calls made 10,000 mocks slower
+  than the search). `make_bank`/`load_bank`: the benchmark notebooks load prefixes of the committed
+  `data/mock_bank_10000.npz` (made by `scripts/make_mock_bank.py`) instead of generating mocks; regenerate the
+  bank only deliberately, since the archived benchmark results refer to it. `darkcomp/gaiamock_bridge.py` — preferred mock backend: calls gaiamock (installed at `$GAIAMOCK_DIR`,
   default `~/software/gaiamock`, needs its 1 GB healpix_scans and compiled GSL solver) and wraps its output as
   `EpochAstrometry`; gaiamock's own cascade and our pipeline agree on identical data. `scripts/detectability.py`
   maps detection fraction over (M2, distance) with either backend.

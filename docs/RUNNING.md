@@ -337,11 +337,20 @@ device memory), Runtime > Change runtime type > GPU, then Run all:
   linear solve.
 - `gpu_benchmark_colab.ipynb`: the original (9,600-point grid) benchmark, kept for the archived L4/A100 runs.
 
-All three run on a CPU too (a local dry run uses small N). `notebooks/gpu_benchmark_colab.ipynb` clones the repository, builds mock sources on the DR4 pre-release
-scan patterns, times the batch pipeline on CPU and GPU after JIT warm-up, scans the batch size up to
-4096, checks recovery against the mock truth, and times a NUTS fit of BH3. Runtime > Change runtime
-type > GPU (L4 or A100), then Runtime > Run all. The notebook runs in float32 (`PRECISION = 32` in the
-first cell). Executed runs are archived in `notebooks/runs/`.
+All three run on a CPU too (a local dry run uses small N) and in float32 (`PRECISION = 32` in the first
+cell). Executed runs are archived in `notebooks/runs/<notebook>_<GPU>_float32_<date>.ipynb`; the committed
+notebooks are kept output-free.
+
+**Mock bank.** The Sobol and RV notebooks do not generate mock sources: they load the first n of
+`data/mock_bank_10000.npz`, a fixed bank of 10,000 sources made once by `scripts/make_mock_bank.py`
+(seed 0; solar-mass primaries, dark companions of 0.2 to 10 Msun at 200 to 3000 pc, P 20 to 1500 d,
+e < 0.8, the 8 best-measured pre-release scan patterns, 15 epoch RVs per source at 1 km/s). The bank stores
+each scan pattern once and only the noisy abscissae per source (27 MB), and `mock.load_bank(path, n,
+with_rvs)` rebuilds the stacked pytree. Every batch size is therefore a prefix of the same stars, the
+recovery numbers are reproducible, and the benchmark cells spend their time on the search, not on data:
+the former on-the-fly generation called JAX once per source and took longer than the search it timed.
+Only the timed pipeline runs (one warm-up to compile, then the median of the repeated runs printed as
+`runs: [...]`) count toward the quoted throughput.
 
 The notebook contains a read-only access token for this private repository so that it can clone the
 code without any setup. Do not forward the notebook outside the collaboration.

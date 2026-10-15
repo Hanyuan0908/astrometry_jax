@@ -5,6 +5,7 @@ template sources -- e.g. the 12 DR4 pre-release sources -- and injects a synthet
 + Keplerian signal plus Gaussian noise. The scanning law is therefore realistic for those sky
 positions; gaiamock (El-Badry et al. 2024) should be used when the sky distribution matters.
 """
+import json
 import numpy as np
 
 from . import epoch as E, orbit
@@ -114,3 +115,69 @@ def add_rvs(rng, epochs, truth, n_rv=10, err_kms=1.0, gamma_sigma=30.0, m_star=N
         Ks.append(K); gammas.append(gamma)
     truth["K"] = np.array(Ks); truth["gamma"] = np.array(gammas)
     return out
+
+
+# ----------------------------------------------------------------------------- mock bank (generate once, reuse)
+
+def make_bank(rng, templates, truth, n_rv=0, err_kms=1.0, noise_scale=1.0, meta=None):
+    """Simulate every source of `truth` on the templates and pack the result compactly for `save_bank`.
+
+    The scan pattern (times, angles, parallax factors, errors, mask) is stored once per template and the
+    per-source data are only the noisy abscissae (float32), the epoch RVs (if n_rv > 0) and the truth, so
+    10,000 sources take ~35 MB. `load_bank` rebuilds the stacked pytree that `batch.stack_epochs` would give.
+    """
+    n = len(truth["period"]); n_tpl = len(templates)
+    n_max = max(len(t.t_day) for t in templates)
+    sims = simulate(rng, templates, truth, noise_scale)
+    if n_rv > 0:
+        sims = add_rvs(rng, sims, truth, n_rv=n_rv, err_kms=err_kms)
+    tpl = [E.EpochAstrometry.from_arrays(t.t_day + t.ref_jd, t.w, t.err * noise_scale, t.plx_factor, np.degrees(t.psi),
+                                         ref_jd=t.ref_jd, n_pad=n_max) for t in templates]
+    bank = dict(tpl_t_day=np.stack([t.t_day for t in tpl]), tpl_err=np.stack([t.err for t in tpl]),
+                tpl_plx_factor=np.stack([t.plx_factor for t in tpl]), tpl_psi_deg=np.stack([np.degrees(t.psi) for t in tpl]),
+                tpl_mask=np.stack([t.mask for t in tpl]).astype(np.int8), tpl_ref_jd=np.array([t.ref_jd for t in tpl]),
+                tpl_idx=(np.arange(n) % n_tpl).astype(np.int16), w=np.zeros((n, n_max), np.float32))
+    for i, s in enumerate(sims):
+        bank["w"][i, :len(s.w)] = s.w
+    if n_rv > 0:
+        rv = [s.with_rvs(s.rv_t_day[s.rv_mask > 0] + s.ref_jd, s.rv[s.rv_mask > 0], s.rv_err[s.rv_mask > 0], n_pad=n_rv) for s in sims]
+        for k in ("rv_t_day", "rv", "rv_err", "rv_mask"):
+            bank[k] = np.stack([getattr(s, k) for s in rv])
+    for k, v in truth.items():
+        bank["truth_" + k] = np.asarray(v)
+    bank["meta"] = np.array(json.dumps(meta or {}))
+    return bank
+
+
+def save_bank(path, bank):
+    np.savez_compressed(path, **bank)
+
+
+def load_bank(path, n=None, with_rvs=False, offset=0):
+    """(dd, truth) for sources [offset, offset + n) of a bank written by `save_bank`.
+
+    dd is the stacked pytree `batch.run_pipeline` takes (same keys as `batch.stack_epochs`; dtypes follow
+    the global precision). with_rvs=False drops the RV rows so the same sources run astrometry-only.
+    """
+    import jax.numpy as jnp
+    z = np.load(path)
+    n_all = len(z["tpl_idx"]); n = n_all - offset if n is None else n
+    if offset + n > n_all:
+        raise ValueError(f"bank {path} holds {n_all} sources, asked for {offset}+{n}")
+    sl = slice(offset, offset + n); idx = z["tpl_idx"][sl]
+    t_day = z["tpl_t_day"][idx]; psi = np.radians(z["tpl_psi_deg"][idx])
+    dd = dict(t_day=t_day, t_yr=t_day / E.YEAR_DAY, w=np.asarray(z["w"][sl], float), err=z["tpl_err"][idx],
+              plx_factor=z["tpl_plx_factor"][idx], sin_psi=np.sin(psi), cos_psi=np.cos(psi), mask=np.asarray(z["tpl_mask"][idx], float))
+    if with_rvs:
+        if "rv" not in z.files:
+            raise ValueError(f"bank {path} has no epoch RVs")
+        dd.update({k: np.asarray(z[k][sl], float) for k in ("rv_t_day", "rv", "rv_err", "rv_mask")})
+    dd = {k: jnp.asarray(v) for k, v in dd.items()}
+    truth = {k[6:]: z[k][sl] for k in z.files if k.startswith("truth_")}
+    return dd, truth
+
+
+def bank_info(path):
+    z = np.load(path)
+    return dict(n_sources=len(z["tpl_idx"]), n_templates=len(z["tpl_ref_jd"]), n_obs_max=z["w"].shape[1],
+                n_rv=(z["rv"].shape[1] if "rv" in z.files else 0), meta=json.loads(str(z["meta"])))
